@@ -1,0 +1,1156 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Movie Data Pipeline · Documentation</title>
+<style>
+/* Mise en page : une barre de navigation fixe, un onglet visible à la fois.
+   Une couleur par étape du pipeline et par type de valeur JSON. */
+:root {
+  --bg: #F6F7FB; --surface: #FFFFFF; --surface-2: #EEF0F6; --fg: #1B1E2C; --muted: #5A6178; --line: #D5DAE6;
+  --s1: #0A7377; --s2: #B4480A; --s3: #2A5BD7; --s4: #BC1C66;
+  --txt: #2A5BD7; --num: #B4480A; --date: #0A7A50; --bool: #7A3FC4; --list: #BC1C66; --obj: #0A7377;
+  --code-bg: #1A1D2C; --code-fg: #E6E9F5;
+  --mono: ui-monospace, "Cascadia Code", Consolas, Menlo, monospace;
+  --body: "Segoe UI", system-ui, -apple-system, sans-serif;
+  --nav-h: 56px;
+}
+@media (prefers-color-scheme: dark) { :root {
+  --bg: #12141D; --surface: #1A1D29; --surface-2: #242836; --fg: #ECEEF6; --muted: #A5ACC4; --line: #363B4D;
+  --s1: #45CFCF; --s2: #F7A05A; --s3: #8BADFF; --s4: #F883B5;
+  --txt: #8BADFF; --num: #F7A05A; --date: #4FD39A; --bool: #C6A0FF; --list: #F883B5; --obj: #45CFCF;
+  --code-bg: #0D0F17;
+} }
+* { box-sizing: border-box; }
+html { scroll-padding-top: calc(var(--nav-h) + 12px); }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 var(--body); }
+h1, h2, h3 { margin: 0; line-height: 1.2; }
+h1 { font-size: 2.1rem; }
+h2 { font-size: 1.45rem; }
+h3 { font-size: 1.05rem; }
+p { margin: 0; }
+a { color: var(--s3); }
+ul, ol { margin: 0; padding-left: 20px; display: grid; gap: 4px; }
+code, .mono { font-family: var(--mono); font-size: .86em; }
+code { background: var(--surface-2); padding: .05em .35em; border-radius: 4px; overflow-wrap: anywhere; }
+pre { margin: 0; background: var(--code-bg); color: var(--code-fg); font: .82rem/1.6 var(--mono); padding: 12px 14px; border-radius: 9px; overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; background: var(--surface); font-size: .92rem; }
+th, td { text-align: left; padding: 7px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .85rem; color: var(--muted); }
+.scroll { overflow-x: auto; }
+button { font: inherit; color: inherit; cursor: pointer; }
+:focus-visible { outline: 3px solid var(--s3); outline-offset: 2px; }
+.st1 { --c: var(--s1); } .st2 { --c: var(--s2); } .st3 { --c: var(--s3); } .st4 { --c: var(--s4); }
+
+/* ---------- Barre de navigation ---------- */
+.nav { position: sticky; top: 0; z-index: 10; background: var(--surface); border-bottom: 1px solid var(--line); }
+.nav-in { max-width: 1120px; margin: 0 auto; height: var(--nav-h); display: flex; align-items: center; gap: 6px; padding: 0 16px; }
+.brand { font-weight: 700; font-size: 1rem; margin-right: 14px; white-space: nowrap; text-decoration: none; color: var(--fg); }
+.brand span { color: var(--s1); }
+.menu { display: flex; align-items: center; gap: 2px; list-style: none; margin: 0; padding: 0; flex: 1; }
+.menu > li { position: relative; }
+.menu .top { background: none; border: 0; border-radius: 8px; padding: 7px 11px; font-weight: 600; font-size: .94rem; color: var(--fg); text-decoration: none; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.menu .top:hover, .menu li.open > .top { background: var(--surface-2); }
+.menu .top.active { color: var(--s3); }
+.menu .top .chev { font-size: .7rem; transition: transform .15s ease; }
+.menu li.open > .top .chev { transform: rotate(180deg); }
+.drop { position: absolute; top: calc(100% + 6px); left: 0; min-width: 250px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px rgba(8,10,20,.16); padding: 6px; list-style: none; margin: 0; display: none; }
+.menu li.open > .drop { display: grid; }
+/* Pont invisible au-dessus du menu : la souris ne « sort » pas en traversant l'espace de 6 px */
+.drop::before { content: ""; position: absolute; left: 0; right: 0; top: -8px; height: 8px; }
+.drop a { display: grid; gap: 1px; padding: 7px 10px; border-radius: 7px; text-decoration: none; color: var(--fg); }
+.drop a:hover, .drop a.active { background: var(--surface-2); }
+.drop a b { font-size: .92rem; font-weight: 600; }
+.drop a small { font-size: .8rem; color: var(--muted); }
+.drop a.active b { color: var(--s3); }
+.nav-right { margin-left: auto; }
+.burger { display: none; background: var(--surface-2); border: 0; border-radius: 8px; padding: 6px 11px; font-weight: 600; margin-left: auto; }
+
+/* ---------- Onglets ---------- */
+main { max-width: 1120px; margin: 0 auto; padding: 34px 16px 64px; }
+.tab { display: none; gap: 40px; }
+.tab.shown { display: grid; }
+section { display: grid; gap: 14px; min-width: 0; }
+.kicker { font-size: .74rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--c, var(--muted)); }
+.head { display: grid; gap: 8px; }
+.lead { color: var(--muted); max-width: 74ch; font-size: 1.04rem; }
+.recap { display: flex; flex-wrap: wrap; gap: 6px 22px; font-size: .9rem; color: var(--muted); background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 8px 14px; }
+.recap b { color: var(--fg); }
+.note { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--c, var(--muted)); border-radius: 8px; padding: 10px 14px; font-size: .95rem; }
+.pager { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; border-top: 1px solid var(--line); padding-top: 16px; }
+.pager a { text-decoration: none; border: 1px solid var(--line); background: var(--surface); border-radius: 9px; padding: 7px 13px; font-weight: 600; font-size: .92rem; color: var(--fg); }
+.pager a:hover { border-color: var(--muted); }
+.pager small { display: block; font-weight: 400; color: var(--muted); font-size: .78rem; }
+.status { display: inline-block; font-size: .74rem; font-weight: 700; padding: 2px 9px; border-radius: 999px; background: var(--surface-2); color: var(--muted); }
+.status.now { background: color-mix(in srgb, var(--s1) 18%, var(--surface)); color: var(--s1); }
+
+/* Cartes et grilles génériques */
+.grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr)); }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.box.c { border-top: 4px solid var(--c); }
+.box b.t1 { font-size: 1.02rem; }
+.box span.d { color: var(--muted); font-size: .93rem; }
+a.box { text-decoration: none; color: inherit; transition: border-color .15s ease, transform .15s ease; }
+a.box:hover { transform: translateY(-2px); border-color: var(--c, var(--muted)); }
+.badge { width: 30px; height: 30px; border-radius: 8px; background: color-mix(in srgb, var(--c) 16%, var(--surface)); color: var(--c); display: grid; place-items: center; font-weight: 700; }
+
+/* Schéma du pipeline */
+.flow { display: grid; grid-template-columns: minmax(0,1fr) 40px minmax(0,1fr) 40px minmax(0,1fr) 40px minmax(0,1.1fr); align-items: center; }
+.fb { background: var(--surface); border: 1.5px solid var(--c, var(--line)); border-radius: 12px; padding: 12px 13px; display: grid; gap: 2px; min-width: 0; }
+.fb b { font-size: .98rem; line-height: 1.25; }
+.fb span { font-size: .86rem; color: var(--muted); line-height: 1.35; }
+.arr { display: grid; justify-items: center; color: var(--c, var(--muted)); font-weight: 700; line-height: 1; font-size: .78rem; text-align: center; }
+.arr::after { content: "→"; font-size: 1.3rem; }
+.fork { display: grid; gap: 12px; grid-column: 6 / 8; grid-template-columns: 40px minmax(0,1fr); align-items: center; }
+
+/* Séquences (aller-retour) */
+.seq { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; }
+
+/* ---------- Carte de l'API ---------- */
+.legend { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: .9rem; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.t { display: inline-block; font-family: var(--mono); font-size: .7rem; font-weight: 700; padding: 1px 7px; border-radius: 999px; color: var(--tc); background: color-mix(in srgb, var(--tc) 14%, var(--surface)); white-space: nowrap; font-style: normal; }
+.t-txt { --tc: var(--txt); } .t-num { --tc: var(--num); } .t-date { --tc: var(--date); }
+.t-bool { --tc: var(--bool); } .t-list { --tc: var(--list); } .t-obj { --tc: var(--obj); }
+.null { font-family: var(--mono); font-size: .7rem; color: var(--muted); border: 1px dashed var(--muted); border-radius: 999px; padding: 0 6px; font-style: normal; }
+.calls { display: grid; grid-template-columns: minmax(0,1fr) 50px minmax(0,1fr) 50px minmax(0,1fr); align-items: stretch; }
+.call { background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 14px; display: grid; gap: 6px; align-content: start; }
+.call .ep { font-family: var(--mono); font-weight: 700; font-size: .9rem; color: var(--txt); }
+.call .what { font-size: .93rem; }
+.call .out { font-size: .85rem; color: var(--muted); }
+.call.opt { border-style: dashed; }
+.arrow { display: grid; place-items: center; align-content: center; color: var(--muted); font-size: .75rem; text-align: center; line-height: 1.2; }
+.arrow::before { content: "→"; font-size: 1.5rem; display: block; }
+.card { background: var(--surface); border: 1.5px solid var(--cc, var(--line)); border-radius: 12px; overflow: hidden; min-width: 0; }
+.card > header { padding: 9px 13px; background: color-mix(in srgb, var(--cc, var(--muted)) 12%, var(--surface)); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
+.card > header b { font-family: var(--mono); font-size: .93rem; color: var(--cc, var(--fg)); }
+.card > header small { color: var(--muted); font-size: .8rem; }
+.group { padding: 6px 13px 2px; font-size: .68rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); border-top: 1px solid var(--line); }
+.card > header + .group { border-top: 0; }
+.row { display: grid; grid-template-columns: minmax(0, 1.1fr) auto minmax(0, 1fr); gap: 10px; align-items: center; padding: 3px 13px; font-size: .86rem; }
+.row .k { font-family: var(--mono); font-weight: 600; overflow-wrap: anywhere; }
+.row .v { font-family: var(--mono); font-size: .78rem; color: var(--muted); overflow-wrap: anywhere; }
+.row.key .k::after { content: " 🔑"; font-size: .8em; }
+.row.link { background: color-mix(in srgb, var(--list) 7%, transparent); }
+.card .pad { height: 8px; }
+.tree { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 44px; align-items: start; }
+.children { display: grid; gap: 14px; position: relative; }
+.children::before { content: ""; position: absolute; left: -24px; top: 18px; bottom: 18px; border-left: 2px solid var(--line); }
+.child { position: relative; }
+.child::before { content: ""; position: absolute; left: -24px; top: 18px; width: 24px; border-top: 2px solid var(--line); }
+.via { font-family: var(--mono); font-size: .75rem; color: var(--muted); margin-bottom: 4px; }
+.sub { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 12px; padding: 10px 13px 13px; border-top: 1px solid var(--line); }
+.sub .card { border-width: 1.2px; }
+.explain { font-size: .85rem; color: var(--muted); padding: 8px 13px 12px; border-top: 1px solid var(--line); }
+.env { display: grid; grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); gap: 0 44px; align-items: start; }
+.split { display: grid; grid-template-columns: minmax(0,1fr) 54px minmax(0,1.6fr); align-items: center; }
+.mini { background: var(--surface); border: 1.5px solid var(--line); border-radius: 10px; padding: 9px 12px; font-size: .84rem; }
+.mini b { font-family: var(--mono); display: block; margin-bottom: 2px; }
+.mini span { color: var(--muted); }
+.mini.bridge { border-color: var(--list); }
+
+footer { max-width: 1120px; margin: 0 auto; padding: 0 16px 30px; color: var(--muted); font-size: .85rem; }
+
+/* ---------- Petits écrans ---------- */
+@media (max-width: 900px) {
+  .burger { display: inline-block; }
+  .menu { display: none; position: absolute; top: var(--nav-h); left: 0; right: 0; background: var(--surface); border-bottom: 1px solid var(--line); flex-direction: column; align-items: stretch; padding: 8px 12px 14px; gap: 2px; }
+  .nav.mobile-open .menu { display: flex; }
+  .menu .top { width: 100%; justify-content: space-between; }
+  .drop { position: static; box-shadow: none; border: 0; padding: 0 0 4px 12px; min-width: 0; }
+  .nav-right { margin-left: 0; }
+  .flow, .calls, .split, .seq { grid-template-columns: minmax(0,1fr); gap: 4px; }
+  .fork { grid-column: auto; grid-template-columns: minmax(0,1fr); gap: 4px; }
+  .arr::after, .arrow::before { content: "↓"; }
+  .tree, .env { grid-template-columns: minmax(0,1fr); gap: 18px; }
+  .children::before, .child::before { display: none; }
+  .sub { grid-template-columns: minmax(0,1fr); }
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+</head>
+<body>
+
+<nav class="nav" id="nav" aria-label="Navigation principale">
+  <div class="nav-in">
+    <a class="brand" href="#accueil">Movie <span>Data</span> Pipeline</a>
+    <button class="burger" id="burger" aria-expanded="false" aria-controls="menu">Menu</button>
+    <ul class="menu" id="menu">
+      <li><a class="top" href="#accueil" data-group="accueil">Accueil</a></li>
+      <li>
+        <button class="top" data-group="etapes" aria-expanded="false">Les étapes <span class="chev">▼</span></button>
+        <ul class="drop">
+          <li><a href="#etape-1"><b>① Récupérer</b><small>L'ingestion depuis TMDB</small></a></li>
+          <li><a href="#etape-2"><b>② Nettoyer</b><small>La transformation en Parquet</small></a></li>
+          <li><a href="#etape-3"><b>③ Ranger</b><small>La base PostgreSQL</small></a></li>
+          <li><a href="#etape-4"><b>④ Partager</b><small>La publication sur Hugging Face</small></a></li>
+        </ul>
+      </li>
+      <li>
+        <button class="top" data-group="api" aria-expanded="false">L'API TMDB <span class="chev">▼</span></button>
+        <ul class="drop">
+          <li><a href="#api-bases"><b>Comprendre une API</b><small>Requête, réponse, paramètres</small></a></li>
+          <li><a href="#api-endpoints"><b>Les endpoints utiles</b><small>Pourquoi ces 3-là</small></a></li>
+          <li><a href="#api-carte"><b>Carte des données</b><small>Tous les champs, en schéma</small></a></li>
+          <li><a href="#api-pieges"><b>Les pièges repérés</b><small>À transmettre au nettoyage</small></a></li>
+          <li><a href="#api-note"><b>Note d'exploration</b><small>Contrat 1 : ce que l'ingestion récupère</small></a></li>
+        </ul>
+      </li>
+      <li>
+        <button class="top" data-group="cadrage" aria-expanded="false">Cadrage <span class="chev">▼</span></button>
+        <ul class="drop">
+          <li><a href="#cadrage-perimetre"><b>Pourquoi cibler</b><small>On ne récupère pas tout</small></a></li>
+          <li><a href="#cadrage-hub"><b>Hugging Face, sans IA</b><small>Un projet de data engineering</small></a></li>
+          <li><a href="#cadrage-analyses"><b>Ce qu'on peut analyser</b><small>Les questions possibles</small></a></li>
+        </ul>
+      </li>
+      <li>
+        <button class="top" data-group="equipe" aria-expanded="false">Équipe <span class="chev">▼</span></button>
+        <ul class="drop">
+          <li><a href="#equipe-roles"><b>Répartition et contrats</b><small>Qui fait quoi</small></a></li>
+          <li><a href="#equipe-organisation"><b>Organisation</b><small>Git, arborescence, règles</small></a></li>
+        </ul>
+      </li>
+      <li><a class="top" href="#lexique" data-group="lexique">Lexique</a></li>
+      <li class="nav-right"><a class="top" href="HISTORIQUE.md" target="_blank" rel="noopener">Historique ↗</a></li>
+    </ul>
+  </div>
+</nav>
+
+<main>
+
+<!-- ===================== ACCUEIL ===================== -->
+<article class="tab" id="accueil" data-group="accueil" data-title="Accueil">
+  <header class="head">
+    <h1>Pipeline de données TMDB</h1>
+    <p class="lead">On construit un <b>pipeline de données</b> : une suite de scripts lancés dans l'ordre, où chaque script prend le résultat du précédent et l'améliore. Ici, on récupère des informations sur des films depuis TMDB, on les nettoie, on les range dans une base SQL et on les publie sur Hugging Face.</p>
+  </header>
+
+  <section>
+    <h2>Le pipeline en un coup d'œil</h2>
+    <div class="flow">
+      <div class="fb"><b>TMDB</b><span>Le site qui possède les infos sur les films</span></div>
+      <div class="arr st1">1</div>
+      <div class="fb st1"><b>Fichiers bruts</b><span><code>data/raw/</code>, JSON Lines : une copie exacte de ce que TMDB a répondu</span></div>
+      <div class="arr st2">2</div>
+      <div class="fb st2"><b>Fichiers propres</b><span><code>data/processed/</code>, Parquet : les mêmes infos, corrigées et rangées</span></div>
+      <div class="fork">
+        <div class="arr st3">3</div>
+        <div class="fb st3"><b>Base PostgreSQL</b><span>Pour poser des questions en SQL</span></div>
+        <div class="arr st4">4</div>
+        <div class="fb st4"><b>Hugging Face Hub</b><span>Pour partager le dataset</span></div>
+      </div>
+    </div>
+    <p class="note">Les étapes 3 et 4 partent toutes les deux des fichiers propres : Hugging Face ne dépend pas de la base de données.</p>
+  </section>
+
+  <section>
+    <h2>Les 4 étapes</h2>
+    <div class="grid">
+      <a class="box c st1" href="#etape-1"><span class="badge">1</span><b class="t1">Récupérer</b><span class="d">Un script demande à TMDB les infos de chaque film et les copie dans des fichiers.</span><span class="status now">En cours</span></a>
+      <a class="box c st2" href="#etape-2"><span class="badge">2</span><b class="t1">Nettoyer</b><span class="d">Un script corrige les données et sépare films, genres et acteurs.</span><span class="status">À venir</span></a>
+      <a class="box c st3" href="#etape-3"><span class="badge">3</span><b class="t1">Ranger</b><span class="d">On charge les données dans PostgreSQL et on les interroge en SQL.</span><span class="status">À venir</span></a>
+      <a class="box c st4" href="#etape-4"><span class="badge">4</span><b class="t1">Partager</b><span class="d">On publie les fichiers propres sur Hugging Face, avec une fiche descriptive.</span><span class="status">À venir</span></a>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pourquoi plusieurs scripts plutôt qu'un seul ?</h2>
+    <ul>
+      <li><b>On évite de tout recommencer.</b> Si le nettoyage plante, on le relance sans redemander les données à TMDB.</li>
+      <li><b>On retrouve vite une erreur.</b> Chaque étape garde son résultat : on voit où ça a déraillé.</li>
+      <li><b>On se répartit le travail.</b> Une personne par étape.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Rendu final et planning</h2>
+    <div class="grid">
+      <div class="box">
+        <b class="t1">Ce qu'on rend</b>
+        <ul>
+          <li>Le dépôt Git organisé, avec tout le code.</li>
+          <li>Le dataset publié sur le Hugging Face Hub.</li>
+          <li>Une présentation de 10 minutes : chaque membre parle, avec des <b>chiffres mesurés</b> (durées, volumes, RAM, gain de l'index).</li>
+        </ul>
+      </div>
+      <div class="box">
+        <b class="t1">Planning (fiche de la prof)</b>
+        <div class="scroll"><table>
+          <tr><th>Jour 1</th><th>Jour 2</th></tr>
+          <tr><td>Créer le dépôt Git</td><td>Transformation des données</td></tr>
+          <tr><td>Choisir la source, vérifier la licence</td><td>Chargement dans la base SQL</td></tr>
+          <tr><td>Ingestion asynchrone</td><td>Publication sur le Hub</td></tr>
+        </table></div>
+      </div>
+    </div>
+  </section>
+</article>
+
+<!-- ===================== ÉTAPE 1 ===================== -->
+<article class="tab st1" id="etape-1" data-group="etapes" data-title="① Récupérer">
+  <header class="head">
+    <span class="kicker">Étape 1 sur 4 · Ingestion · A (Yannis)</span>
+    <h1>① Récupérer les données</h1>
+    <p class="lead">Un script demande à l'API TMDB les infos de chaque film et les écrit <b>telles quelles</b> dans des fichiers.</p>
+  </header>
+  <div class="recap"><span><b>Avant :</b> rien, c'est le point de départ.</span><span><b>Après :</b> ② Nettoyer lit les fichiers produits ici.</span></div>
+
+  <section>
+    <h2>Entrée et sortie</h2>
+    <div class="grid">
+      <div class="box"><b class="t1">Entrée</b><span class="d">L'API TMDB : <code>/discover/movie</code> pour la liste des films, puis <code>/movie/{id}?append_to_response=credits</code> pour chaque fiche.</span></div>
+      <div class="box"><b class="t1">Sortie</b><span class="d"><code>data/raw/</code>, au format JSON Lines : un film par ligne, par exemple <code>data/raw/movies/year=2010.jsonl</code>.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pourquoi garder une copie « brute » ?</h2>
+    <p>On garde une copie exacte de ce que TMDB a répondu, sans rien modifier. Si le nettoyage a un bug, on le corrige et on le relance, sans redemander les données à TMDB. C'est aussi pour ça que <code>data/raw/</code> n'est jamais modifié.</p>
+  </section>
+
+  <section>
+    <h2>Ce que la fiche exige</h2>
+    <div class="grid">
+      <div class="box"><b class="t1">aiohttp (asynchrone)</b><span class="d">Lancer plusieurs requêtes en même temps au lieu d'attendre chaque réponse une par une. Pour des milliers de films, c'est beaucoup plus rapide.</span></div>
+      <div class="box"><b class="t1">Un sémaphore</b><span class="d">Une limite au nombre de requêtes simultanées, par exemple 20, pour ne pas surcharger TMDB et ne pas se faire bloquer.</span></div>
+      <div class="box"><b class="t1">Timeouts et nouvelles tentatives</b><span class="d">Si une réponse tarde ou échoue, on réessaie en attendant de plus en plus longtemps : 1 s, 2 s, 4 s...</span></div>
+      <div class="box"><b class="t1">Des noms prévisibles</b><span class="d">Le nom du fichier dit ce qu'il contient : <code>year=2010.jsonl</code>. On le retrouve sans chercher.</span></div>
+      <div class="box"><b class="t1">Un checkpoint</b><span class="d">La liste des films déjà récupérés. Si le script s'arrête, il reprend là où il en était.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Où on en est</h2>
+    <ol>
+      <li><b>Explorer l'API</b> à la main avec Postman : fiche d'Inception et volumes de discover mesurés. <span class="status">Fait</span> (reste à vérifier <code>credits</code>)</li>
+      <li><b>Fixer le périmètre</b> : 2000-2026, au moins 50 votes, en anglais (voir <a href="#cadrage-perimetre">Pourquoi cibler</a>). <span class="status">Fait</span></li>
+      <li><b>Écrire la note d'exploration</b> (contrat 1 avec B et C) : voir <a href="#api-note">Note d'exploration</a>. <span class="status now">À valider en équipe</span></li>
+      <li><b>Fournir un petit échantillon</b> de JSONL à B pour qu'il démarre.</li>
+      <li><b>Écrire le script asynchrone.</b></li>
+    </ol>
+  </section>
+</article>
+
+<!-- ===================== ÉTAPE 2 ===================== -->
+<article class="tab st2" id="etape-2" data-group="etapes" data-title="② Nettoyer">
+  <header class="head">
+    <span class="kicker">Étape 2 sur 4 · Transformation · B</span>
+    <h1>② Nettoyer les données</h1>
+    <p class="lead">Un script lit les fichiers bruts, corrige et range les données, puis écrit des fichiers propres. Les fichiers bruts ne changent jamais.</p>
+  </header>
+  <div class="recap"><span><b>Avant :</b> ① a écrit les fiches brutes de TMDB.</span><span><b>Après :</b> ③ et ④ partent des fichiers propres produits ici.</span></div>
+
+  <section>
+    <h2>Entrée et sortie</h2>
+    <div class="grid">
+      <div class="box"><b class="t1">Entrée</b><span class="d"><code>data/raw/</code>, au format JSON Lines.</span></div>
+      <div class="box"><b class="t1">Sortie</b><span class="d"><code>data/processed/</code>, au format Parquet, un format compact pour les tableaux : <code>movies/</code>, <code>movie_genres/</code>, <code>credits/</code>.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Ce que fait le nettoyage</h2>
+    <ul>
+      <li><b>Séparer :</b> films, genres et acteurs partent dans des tableaux distincts, car une case ne peut pas contenir une liste.</li>
+      <li><b>Typer :</b> le texte <code>"2010-07-15"</code> devient une vraie date.</li>
+      <li><b>Traiter les valeurs inconnues :</b> une durée ou un budget à <code>0</code> devient une case vide, sinon les moyennes seraient fausses.</li>
+      <li><b>Supprimer les doublons :</b> un même film ne doit apparaître qu'une fois.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Ce que la fiche exige</h2>
+    <ul>
+      <li>Un <b>traitement par lots</b> : lire par paquets (par exemple 1 000 lignes), pour ne pas saturer la mémoire.</li>
+      <li>Un nettoyage et un typage des données.</li>
+      <li>Une sortie en Parquet.</li>
+      <li>Des tests avec pytest.</li>
+    </ul>
+  </section>
+</article>
+
+<!-- ===================== ÉTAPE 3 ===================== -->
+<article class="tab st3" id="etape-3" data-group="etapes" data-title="③ Ranger">
+  <header class="head">
+    <span class="kicker">Étape 3 sur 4 · Base SQL · C</span>
+    <h1>③ Ranger dans PostgreSQL</h1>
+    <p class="lead">On charge les fichiers propres dans une base PostgreSQL pour les interroger en SQL. La base refuse aussi les données incohérentes.</p>
+  </header>
+  <div class="recap"><span><b>Avant :</b> ② a produit les fichiers Parquet propres.</span><span><b>En parallèle :</b> ④ publie ces mêmes fichiers.</span></div>
+
+  <section>
+    <h2>Les tables prévues</h2>
+    <div class="grid">
+      <div class="mini"><b>films</b><span>une ligne par film</span></div>
+      <div class="mini"><b>genres</b><span>une ligne par genre</span></div>
+      <div class="mini"><b>personnes</b><span>une ligne par acteur</span></div>
+      <div class="mini bridge"><b>film_genres</b><span>pont : quel film a quel genre</span></div>
+      <div class="mini bridge"><b>casting</b><span>pont : qui joue dans quel film</span></div>
+    </div>
+    <p class="note">Les tables « pont » existent parce qu'un film a plusieurs genres et qu'un genre concerne plusieurs films. On y met une ligne par couple film-genre.</p>
+  </section>
+
+  <section>
+    <h2>Ce que la fiche exige</h2>
+    <ul>
+      <li>Un schéma avec des clés, des contraintes et des types adaptés.</li>
+      <li>Un chargement qu'on peut <b>relancer sans créer de doublons</b>.</li>
+      <li>Au moins 5 requêtes d'analyse : jointures, <code>GROUP BY</code>, CTE, window functions (voir <a href="#cadrage-analyses">Ce qu'on peut analyser</a>).</li>
+      <li>Un index dont on mesure le gain avec <code>EXPLAIN ANALYZE</code>.</li>
+    </ul>
+  </section>
+</article>
+
+<!-- ===================== ÉTAPE 4 ===================== -->
+<article class="tab st4" id="etape-4" data-group="etapes" data-title="④ Partager">
+  <header class="head">
+    <span class="kicker">Étape 4 sur 4 · Hub · C ou B (à décider)</span>
+    <h1>④ Partager sur Hugging Face</h1>
+    <p class="lead">Un script envoie les fichiers propres sur le Hugging Face Hub, l'équivalent de GitHub pour les données.</p>
+  </header>
+  <div class="recap"><span><b>Avant :</b> ② a produit les fichiers Parquet propres.</span><span><b>Après :</b> le rendu final et la présentation.</span></div>
+
+  <section>
+    <h2>Les trois choses à faire</h2>
+    <ul>
+      <li><b>Envoyer les fichiers</b> de <code>data/processed/</code> avec un script.</li>
+      <li><b>Écrire la Dataset Card</b>, le README du dataset : source, période, contenu de chaque table, volume, limites, licence TMDB.</li>
+      <li><b>Poser le tag <code>v1.0.0</code></b> : comme sur Git, il marque la version rendue.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Ce que la fiche exige</h2>
+    <ul>
+      <li>Un script de publication.</li>
+      <li>Un dépôt privé pendant le développement.</li>
+      <li>Une version taguée <code>v1.0.0</code>.</li>
+      <li>Une Dataset Card complète, avec la licence de la source.</li>
+    </ul>
+    <p class="note">Il n'y a pas d'IA dans cette étape : on partage les données, c'est tout. Voir <a href="#cadrage-hub">Hugging Face, sans IA</a>.</p>
+  </section>
+</article>
+
+<!-- ===================== API : BASES ===================== -->
+<article class="tab" id="api-bases" data-group="api" data-title="Comprendre une API">
+  <header class="head">
+    <span class="kicker">L'API TMDB</span>
+    <h1>Comprendre une API</h1>
+    <p class="lead">Le script d'ingestion passe son temps à « parler » à TMDB. Avant d'écrire du code, il faut comprendre comment se passe cette conversation.</p>
+  </header>
+
+  <section>
+    <h2>Ce qu'est une API</h2>
+    <p>Une API est une adresse web faite pour les programmes, pas pour les humains. Le site de TMDB affiche une jolie page avec des images. L'API, elle, renvoie les mêmes informations en texte brut, au format <b>JSON</b> : des étiquettes et leurs valeurs.</p>
+<pre>GET https://api.themoviedb.org/3/movie/27205?api_key=TA_CLE
+
+{"id": 27205, "title": "Inception", "release_date": "2010-07-15", "runtime": 148, ...}</pre>
+    <p><code>GET</code> veut dire « je veux <i>lire</i> une information ». C'est la seule méthode dont on a besoin avec TMDB.</p>
+  </section>
+
+  <section>
+    <h2>Chemin et paramètres</h2>
+<pre>/movie/27205  ?  api_key=...  &amp;  language=fr-FR  &amp;  append_to_response=credits
+└── chemin ─┘     └─ param 1 ┘    └── param 2 ──┘    └────── param 3 ─────────┘</pre>
+    <div class="grid">
+      <div class="box"><b class="t1">Le chemin, avant le ?</b><span class="d">Désigne <i>la chose</i> demandée : <code>/movie/27205</code>, c'est « le film 27205 ».</span></div>
+      <div class="box"><b class="t1">Les paramètres, après le ?</b><span class="d">Servent à <i>filtrer ou régler</i> la réponse : l'année, la langue, le tri, la page... Exemple : <code>/discover/movie?primary_release_year=2010</code>.</span></div>
+    </div>
+    <p class="note">Le mécanisme des paramètres (<code>nom=valeur</code> séparés par <code>&amp;</code>) est une règle du web, la même partout. Mais <b>le sens de chaque paramètre est propre à chaque API</b>, et c'est sa documentation qui le donne. Un paramètre inconnu est en général ignoré, sans erreur.</p>
+  </section>
+
+  <section>
+    <h2>Les codes de réponse</h2>
+    <div class="scroll"><table>
+      <tr><th>Code</th><th>Sens</th><th>Ce que le script fera</th></tr>
+      <tr><td><code>200</code></td><td>Tout s'est bien passé</td><td>Écrire la réponse dans le fichier</td></tr>
+      <tr><td><code>401</code></td><td>Clé refusée</td><td>S'arrêter : inutile de réessayer</td></tr>
+      <tr><td><code>404</code></td><td>Ce film n'existe pas</td><td>Passer au suivant</td></tr>
+      <tr><td><code>429</code></td><td>Trop de requêtes, ralentis</td><td>Attendre, puis réessayer</td></tr>
+      <tr><td><code>500</code>, <code>503</code>...</td><td>Problème côté TMDB</td><td>Attendre, puis réessayer</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>append_to_response : un appel au lieu de deux</h2>
+    <p>Le casting n'est pas dans la fiche d'un film. On peut le demander à part (<code>/movie/27205/credits</code>) ou dans la même requête, avec <code>append_to_response=credits</code>.</p>
+    <div class="seq">
+      <div class="box"><b class="t1">Sans : deux allers-retours</b>
+<pre>Toi → TMDB : fiche du film 27205
+Toi ← TMDB : fiche
+Toi → TMDB : acteurs du film 27205
+Toi ← TMDB : acteurs</pre></div>
+      <div class="box"><b class="t1">Avec : un seul aller-retour</b>
+<pre>Toi → TMDB : fiche + acteurs du film 27205
+     (TMDB va chercher les deux dans sa base
+      et assemble un seul JSON)
+Toi ← TMDB : fiche + bloc "credits"</pre></div>
+    </div>
+    <ul>
+      <li><b>C'est un seul appel</b> : un seul clic sur Send, une seule réponse. Comme commander le plat et la boisson d'un coup au restaurant.</li>
+      <li><b>Le serveur ne garde rien en mémoire</b> entre deux requêtes : il en fait juste un peu plus pour celle-ci.</li>
+      <li><b>Pourquoi c'est utile :</b> chaque aller-retour prend 100 à 300 ms, et TMDB limite le nombre de requêtes par seconde. Pour 10 000 films, on passe de 20 000 requêtes à 10 000.</li>
+      <li><b>C'est propre à TMDB</b>, pas une règle générale. D'autres API ont la même idée sous un autre nom (<code>expand</code> chez Stripe, <code>include</code> ailleurs). On peut en demander plusieurs : <code>credits,keywords</code>.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Le bon réflexe : lire la doc</h2>
+    <p>Chaque API publie la liste de ses adresses et de leurs paramètres. Celle de TMDB : <a href="https://developer.themoviedb.org/reference/movie-details">developer.themoviedb.org</a>.</p>
+  </section>
+</article>
+
+<!-- ===================== API : ENDPOINTS ===================== -->
+<article class="tab" id="api-endpoints" data-group="api" data-title="Les endpoints utiles">
+  <header class="head">
+    <span class="kicker">L'API TMDB</span>
+    <h1>Les endpoints utiles</h1>
+    <p class="lead">Un endpoint est une adresse précise de l'API : <code>/movie/{id}</code>, <code>/discover/movie</code>... TMDB en propose des dizaines, mais trois suffisent pour notre pipeline.</p>
+  </header>
+
+  <section>
+    <h2>On part des données qu'on veut</h2>
+    <p>Ce qu'on veut obtenir à la fin : <b>un tableau de films, avec leurs détails, leurs genres et leurs acteurs</b>. On cherche ensuite quels appels donnent ça. On part donc des données voulues pour choisir les endpoints, pas l'inverse. Pour analyser des séries, on aurait pris les endpoints <code>/tv</code>.</p>
+    <div class="scroll"><table>
+      <tr><th>Endpoint</th><th>Rôle dans le pipeline</th><th>Appels</th></tr>
+      <tr><td><code>/discover/movie</code></td><td>Trouver <i>quels</i> films récupérer : leurs ids</td><td>1 par page de 20 films</td></tr>
+      <tr><td><code>/movie/{id}</code> + <code>credits</code></td><td>Récupérer <i>tout</i> sur chaque film, acteurs compris</td><td>1 par film</td></tr>
+      <tr><td><code>/genre/movie/list</code></td><td>La liste des 19 genres (optionnel)</td><td>1 seul</td></tr>
+    </table></div>
+  </section>
+
+  <section>
+    <h2>Pourquoi discover plutôt que les autres ?</h2>
+    <p>C'est le seul qui permet de <b>filtrer à volonté</b> (par année, nombre de votes, langue...) et de parcourir <i>tous</i> les films qui correspondent.</p>
+    <div class="scroll"><table>
+      <tr><th>Autre endpoint</th><th>Ce qu'il fait</th><th>Pourquoi on ne le prend pas</th></tr>
+      <tr><td><code>/search/movie?query=...</code></td><td>Chercher un film par son nom</td><td>Il faut connaître le nom à l'avance</td></tr>
+      <tr><td><code>/movie/popular</code>, <code>/movie/top_rated</code></td><td>Des listes toutes faites</td><td>Impossible de découper par année</td></tr>
+      <tr><td><code>/trending/movie/week</code></td><td>Les tendances du moment</td><td>Change chaque semaine, pas de filtre</td></tr>
+      <tr><td><code>/person/{id}</code></td><td>La fiche d'un acteur</td><td>Les infos utiles sont déjà dans <code>credits</code></td></tr>
+    </table></div>
+    <p class="note">À garder pour plus tard : <code>/movie/changes</code> liste les films modifiés récemment. La fiche parle de « mises à jour régulières » : il permettrait de ne redemander que les films qui ont changé. Bonne piste d'amélioration pour la présentation.</p>
+  </section>
+
+  <section>
+    <h2>Paramètres utiles de discover</h2>
+    <div class="scroll"><table>
+      <tr><th>Paramètre</th><th>Exemple</th><th>Rôle</th></tr>
+      <tr><td><code>primary_release_year</code></td><td><code>2010</code></td><td>L'année de sortie</td></tr>
+      <tr><td><code>sort_by</code></td><td><code>popularity.desc</code></td><td>L'ordre : les plus populaires d'abord</td></tr>
+      <tr><td><code>vote_count.gte</code></td><td><code>50</code></td><td>Au moins 50 votes : écarte les films quasi inconnus</td></tr>
+      <tr><td><code>page</code></td><td><code>2</code></td><td>La page voulue (500 au maximum)</td></tr>
+    </table></div>
+  </section>
+</article>
+
+<!-- ===================== API : CARTE ===================== -->
+<article class="tab" id="api-carte" data-group="api" data-title="Carte des données">
+  <header class="head">
+    <span class="kicker">L'API TMDB</span>
+    <h1>Carte des données</h1>
+    <p class="lead">Ce que TMDB renvoie, et comment c'est organisé. Le but est de voir d'un coup d'œil quelles informations existent et sous quelle forme, avant de choisir ce que l'ingestion récupère.</p>
+  </header>
+  <div class="recap"><span><b>Avant :</b> premier appel réussi sur Inception.</span><span><b>Ensuite :</b> choisir les champs à garder (contrat 1 avec B et C).</span></div>
+
+  <section>
+    <h2>Les types de valeurs</h2>
+    <p class="lead">Chaque champ porte une étiquette de couleur. Elle décidera plus tard du type des colonnes, dans le Parquet puis en SQL.</p>
+    <div class="legend">
+      <span><i class="t t-txt">texte</i> des mots</span>
+      <span><i class="t t-num">nombre</i> entier ou à virgule</span>
+      <span><i class="t t-date">date</i> écrite comme du texte : "2010-07-15"</span>
+      <span><i class="t t-bool">vrai/faux</i> true ou false</span>
+      <span><i class="t t-list">liste</i> plusieurs éléments entre [ ]</span>
+      <span><i class="t t-obj">objet</i> une sous-fiche entre { }</span>
+      <span><i class="null">peut être null</i> parfois vide</span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Le parcours : quels appels, dans quel ordre</h2>
+    <div class="calls">
+      <div class="call">
+        <span class="ep">/discover/movie</span>
+        <span class="what">« Donne-moi les films sortis en 2010. »</span>
+        <span class="out">Pages de 20 films, 500 pages au maximum. C'est surtout l'<code>id</code> de chaque film qui nous intéresse.</span>
+      </div>
+      <div class="arrow">les ids</div>
+      <div class="call">
+        <span class="ep">/movie/{id}<br>?append_to_response=credits</span>
+        <span class="what">« Donne-moi la fiche complète du film 27205, avec ses acteurs. »</span>
+        <span class="out">Un appel par film. La réponse la plus riche, détaillée ci-dessous.</span>
+      </div>
+      <div class="arrow">optionnel</div>
+      <div class="call opt">
+        <span class="ep">/genre/movie/list</span>
+        <span class="what">« Donne-moi la liste de tous les genres. »</span>
+        <span class="out">Un seul appel : 19 genres, chacun avec un <code>id</code> et un <code>name</code>.</span>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>La fiche d'un film : /movie/{id}?append_to_response=credits</h2>
+    <p class="lead">À gauche, les valeurs simples du film. À droite, les listes et sous-fiches qu'il contient. Les exemples sont les valeurs d'Inception.</p>
+    <div class="tree">
+      <article class="card" style="--cc:var(--txt)">
+        <header><b>Film</b><small>un objet par film</small></header>
+        <div class="group">Identité</div>
+        <div class="row key"><span class="k">id</span><i class="t t-num">nombre</i><span class="v">27205</span></div>
+        <div class="row"><span class="k">imdb_id</span><span><i class="t t-txt">texte</i> <i class="null">null</i></span><span class="v">"tt1375666"</span></div>
+        <div class="row"><span class="k">title</span><i class="t t-txt">texte</i><span class="v">"Inception"</span></div>
+        <div class="row"><span class="k">original_title</span><i class="t t-txt">texte</i><span class="v">"Inception"</span></div>
+        <div class="row"><span class="k">original_language</span><i class="t t-txt">texte</i><span class="v">"en"</span></div>
+        <div class="row"><span class="k">status</span><i class="t t-txt">texte</i><span class="v">"Released"</span></div>
+        <div class="group">Contenu</div>
+        <div class="row"><span class="k">overview</span><i class="t t-txt">texte</i><span class="v">"Cobb, a skilled thief…"</span></div>
+        <div class="row"><span class="k">tagline</span><i class="t t-txt">texte</i><span class="v">"Your mind is the scene…"</span></div>
+        <div class="row"><span class="k">homepage</span><i class="t t-txt">texte</i><span class="v">"https://www.warnerbros…"</span></div>
+        <div class="group">Date et durée</div>
+        <div class="row"><span class="k">release_date</span><i class="t t-date">date</i><span class="v">"2010-07-15"</span></div>
+        <div class="row"><span class="k">runtime</span><i class="t t-num">nombre</i><span class="v">148 (minutes)</span></div>
+        <div class="group">Chiffres</div>
+        <div class="row"><span class="k">budget</span><i class="t t-num">nombre</i><span class="v">160000000 ($)</span></div>
+        <div class="row"><span class="k">revenue</span><i class="t t-num">nombre</i><span class="v">839030630 ($)</span></div>
+        <div class="row"><span class="k">vote_average</span><i class="t t-num">nombre</i><span class="v">8.373 (sur 10)</span></div>
+        <div class="row"><span class="k">vote_count</span><i class="t t-num">nombre</i><span class="v">40628</span></div>
+        <div class="row"><span class="k">popularity</span><i class="t t-num">nombre</i><span class="v">47.2752</span></div>
+        <div class="group">Images (chemins)</div>
+        <div class="row"><span class="k">poster_path</span><i class="t t-txt">texte</i><span class="v">"/xlaY2zyz….jpg"</span></div>
+        <div class="row"><span class="k">backdrop_path</span><i class="t t-txt">texte</i><span class="v">"/8ZTVqvKD….jpg"</span></div>
+        <div class="group">Indicateurs</div>
+        <div class="row"><span class="k">adult</span><i class="t t-bool">vrai/faux</i><span class="v">false</span></div>
+        <div class="row"><span class="k">video</span><i class="t t-bool">vrai/faux</i><span class="v">false</span></div>
+        <div class="row"><span class="k">softcore</span><i class="t t-bool">vrai/faux</i><span class="v">false</span></div>
+        <div class="group">Listes et sous-fiches (détaillées à droite)</div>
+        <div class="row link"><span class="k">genres</span><i class="t t-list">liste</i><span class="v">3 genres</span></div>
+        <div class="row link"><span class="k">credits</span><i class="t t-obj">objet</i><span class="v">cast + crew</span></div>
+        <div class="row link"><span class="k">production_companies</span><i class="t t-list">liste</i><span class="v">3 sociétés</span></div>
+        <div class="row link"><span class="k">production_countries</span><i class="t t-list">liste</i><span class="v">2 pays</span></div>
+        <div class="row link"><span class="k">spoken_languages</span><i class="t t-list">liste</i><span class="v">4 langues</span></div>
+        <div class="row link"><span class="k">origin_country</span><i class="t t-list">liste</i><span class="v">["US", "GB"]</span></div>
+        <div class="row link"><span class="k">belongs_to_collection</span><span><i class="t t-obj">objet</i> <i class="null">null</i></span><span class="v">null</span></div>
+        <div class="pad"></div>
+      </article>
+
+      <div class="children">
+        <div class="child">
+          <div class="via">film.genres</div>
+          <article class="card" style="--cc:var(--list)">
+            <header><b>genres [ ]</b><small>un élément par genre</small></header>
+            <div class="row key"><span class="k">id</span><i class="t t-num">nombre</i><span class="v">28</span></div>
+            <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">"Action"</span></div>
+            <p class="explain">Inception : Action (28), Science Fiction (878), Crime (80).</p>
+          </article>
+        </div>
+        <div class="child">
+          <div class="via">film.credits — ajouté par append_to_response</div>
+          <article class="card" style="--cc:var(--obj)">
+            <header><b>credits { }</b><small>deux listes de personnes</small></header>
+            <div class="sub">
+              <article class="card" style="--cc:var(--list)">
+                <header><b>cast [ ]</b><small>les acteurs</small></header>
+                <div class="row key"><span class="k">id</span><i class="t t-num">nombre</i><span class="v">6193</span></div>
+                <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">"Leonardo DiCaprio"</span></div>
+                <div class="row"><span class="k">original_name</span><i class="t t-txt">texte</i><span class="v">"渡辺謙" (Ken Watanabe)</span></div>
+                <div class="row"><span class="k">character</span><i class="t t-txt">texte</i><span class="v">"Dom Cobb"</span></div>
+                <div class="row"><span class="k">order</span><i class="t t-num">nombre</i><span class="v">0 (1er au générique)</span></div>
+                <div class="row"><span class="k">cast_id</span><i class="t t-num">nombre</i><span class="v">1</span></div>
+                <div class="row"><span class="k">gender</span><i class="t t-num">nombre</i><span class="v">0 inconnu, 1 F, 2 H, 3 NB</span></div>
+                <div class="row"><span class="k">known_for_department</span><i class="t t-txt">texte</i><span class="v">"Acting"</span></div>
+                <div class="row"><span class="k">popularity</span><i class="t t-num">nombre</i><span class="v">8.6318</span></div>
+                <div class="row"><span class="k">profile_path</span><span><i class="t t-txt">texte</i> <i class="null">null</i></span><span class="v">photo</span></div>
+                <div class="row"><span class="k">credit_id</span><i class="t t-txt">texte</i><span class="v">"52fe4534c3a3…"</span></div>
+                <div class="row"><span class="k">adult</span><i class="t t-bool">vrai/faux</i><span class="v">false</span></div>
+                <div class="pad"></div>
+              </article>
+              <article class="card" style="--cc:var(--list)">
+                <header><b>crew [ ]</b><small>l'équipe technique</small></header>
+                <div class="row"><span class="k">id</span><i class="t t-num">nombre</i><span class="v">525 (la personne)</span></div>
+                <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">"Christopher Nolan"</span></div>
+                <div class="row"><span class="k">original_name</span><i class="t t-txt">texte</i><span class="v">"Christopher Nolan"</span></div>
+                <div class="row"><span class="k">job</span><i class="t t-txt">texte</i><span class="v">"Writer"</span></div>
+                <div class="row"><span class="k">department</span><i class="t t-txt">texte</i><span class="v">"Writing"</span></div>
+                <div class="row key"><span class="k">credit_id</span><i class="t t-txt">texte</i><span class="v">"6168e57da802…" (le poste)</span></div>
+                <div class="row"><span class="k">known_for_department</span><i class="t t-txt">texte</i><span class="v">"Directing" (sa spécialité)</span></div>
+                <div class="row"><span class="k">gender</span><i class="t t-num">nombre</i><span class="v">2</span></div>
+                <div class="row"><span class="k">popularity</span><i class="t t-num">nombre</i><span class="v">8.2143</span></div>
+                <div class="row"><span class="k">profile_path</span><span><i class="t t-txt">texte</i> <i class="null">null</i></span><span class="v">photo</span></div>
+                <div class="row"><span class="k">adult</span><i class="t t-bool">vrai/faux</i><span class="v">false</span></div>
+                <div class="pad"></div>
+              </article>
+            </div>
+            <p class="explain"><b>Vérifié sur Inception :</b> 52 acteurs, triés par <code>order</code>, jusqu'aux petits rôles (« Lawyer », « Bar Sub Con »). <code>crew</code> contient des dizaines de postes techniques (cascadeurs, doublures...). La réponse complète pèse 38 Ko et a mis 495 ms à arriver.<br><b>Piège 1 :</b> une même personne peut avoir plusieurs postes. Nolan est <code>Producer</code> et <code>Writer</code>, avec deux <code>credit_id</code> différents. Dans <code>crew</code>, c'est donc <code>credit_id</code> (le poste) qui est unique, pas <code>id</code> (la personne).<br><b>Piège 2 :</b> <code>known_for_department</code> est la spécialité habituelle de la personne, pas son poste sur ce film. Pour trouver les réalisateurs, on filtre sur <code>job = "Director"</code>.</p>
+          </article>
+        </div>
+        <div class="child">
+          <div class="via">film.production_companies</div>
+          <article class="card" style="--cc:var(--list)">
+            <header><b>production_companies [ ]</b><small>les sociétés de production</small></header>
+            <div class="row key"><span class="k">id</span><i class="t t-num">nombre</i><span class="v">174</span></div>
+            <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">"Warner Bros. Pictures"</span></div>
+            <div class="row"><span class="k">origin_country</span><i class="t t-txt">texte</i><span class="v">"US"</span></div>
+            <div class="row"><span class="k">logo_path</span><span><i class="t t-txt">texte</i> <i class="null">null</i></span><span class="v">"/zhD3hhtK….png"</span></div>
+            <div class="pad"></div>
+          </article>
+        </div>
+        <div class="child">
+          <div class="via">film.production_countries · film.spoken_languages</div>
+          <article class="card" style="--cc:var(--list)">
+            <header><b>production_countries [ ]</b><small>pays de production</small></header>
+            <div class="row key"><span class="k">iso_3166_1</span><i class="t t-txt">texte</i><span class="v">"GB"</span></div>
+            <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">"United Kingdom"</span></div>
+            <div class="pad"></div>
+          </article>
+          <div style="height:10px"></div>
+          <article class="card" style="--cc:var(--list)">
+            <header><b>spoken_languages [ ]</b><small>langues parlées dans le film</small></header>
+            <div class="row key"><span class="k">iso_639_1</span><i class="t t-txt">texte</i><span class="v">"fr"</span></div>
+            <div class="row"><span class="k">english_name</span><i class="t t-txt">texte</i><span class="v">"French"</span></div>
+            <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">"Français"</span></div>
+            <div class="pad"></div>
+          </article>
+        </div>
+        <div class="child">
+          <div class="via">film.belongs_to_collection</div>
+          <article class="card" style="--cc:var(--obj)">
+            <header><b>belongs_to_collection { }</b><small>la saga, ou null</small></header>
+            <div class="row key"><span class="k">id</span><i class="t t-num">nombre</i><span class="v"></span></div>
+            <div class="row"><span class="k">name</span><i class="t t-txt">texte</i><span class="v">ex. "Harry Potter – Saga"</span></div>
+            <div class="row"><span class="k">poster_path</span><i class="t t-txt">texte</i><span class="v"></span></div>
+            <div class="row"><span class="k">backdrop_path</span><i class="t t-txt">texte</i><span class="v"></span></div>
+            <p class="explain">Inception n'appartient à aucune saga, d'où <code>null</code>. Ce n'est pas une liste : un film appartient au plus à une collection.</p>
+          </article>
+        </div>
+      </div>
+    </div>
+    <p class="note">La clé 🔑 marque l'identifiant unique de chaque élément. C'est grâce à ces ids qu'on reliera les tableaux entre eux : le genre 28 est toujours « Action », dans tous les films.</p>
+  </section>
+
+  <section>
+    <h2>La liste des films d'une année : /discover/movie</h2>
+    <p class="lead">La réponse est une « enveloppe » : quelques infos sur la pagination, puis une liste <code>results</code> de 20 films résumés.</p>
+    <div class="env">
+      <article class="card" style="--cc:var(--obj)">
+        <header><b>Réponse discover</b><small>une par page</small></header>
+        <div class="row"><span class="k">page</span><i class="t t-num">nombre</i><span class="v">1</span></div>
+        <div class="row"><span class="k">total_pages</span><i class="t t-num">nombre</i><span class="v">nombre de pages au total</span></div>
+        <div class="row"><span class="k">total_results</span><i class="t t-num">nombre</i><span class="v">nombre de films au total</span></div>
+        <div class="row link"><span class="k">results</span><i class="t t-list">liste</i><span class="v">20 films</span></div>
+        <p class="explain">TMDB refuse les pages au-delà de 500, soit 10 000 films par recherche. Si une année en compte plus, il faudra découper plus finement, par mois par exemple.</p>
+      </article>
+      <div class="children">
+        <div class="child">
+          <div class="via">results</div>
+          <article class="card" style="--cc:var(--list)">
+            <header><b>results [ ]</b><small>un film résumé</small></header>
+            <div class="row key"><span class="k">id</span><i class="t t-num">nombre</i><span class="v">27205 ← ce qu'on vient chercher</span></div>
+            <div class="row"><span class="k">title</span><i class="t t-txt">texte</i><span class="v">"Inception"</span></div>
+            <div class="row"><span class="k">release_date</span><i class="t t-date">date</i><span class="v">"2010-07-15"</span></div>
+            <div class="row"><span class="k">vote_average</span><i class="t t-num">nombre</i><span class="v">8.373</span></div>
+            <div class="row"><span class="k">vote_count</span><i class="t t-num">nombre</i><span class="v">40628</span></div>
+            <div class="row"><span class="k">popularity</span><i class="t t-num">nombre</i><span class="v">47.2752</span></div>
+            <div class="row"><span class="k">genre_ids</span><i class="t t-list">liste</i><span class="v">[28, 878, 80] ← ids seulement</span></div>
+            <div class="row"><span class="k">overview, original_title, original_language, poster_path, backdrop_path, adult, video</span><span></span><span class="v">comme dans la fiche</span></div>
+            <p class="explain">Il n'y a ni durée, ni budget, ni acteurs, et les genres ne sont donnés que par leur id. Voilà pourquoi il faut ensuite appeler <code>/movie/{id}</code> pour chaque film.</p>
+          </article>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Et après : de la fiche aux tableaux</h2>
+    <p class="lead">Pour situer la suite (le travail de B et C) : chaque liste de la fiche devient un tableau séparé, relié au film par son id.</p>
+    <div class="split">
+      <article class="card" style="--cc:var(--txt)">
+        <header><b>1 fiche JSON</b><small>par film</small></header>
+        <p class="explain" style="border:0">Les valeurs simples, plus les listes genres, cast, crew...</p>
+      </article>
+      <div class="arrow">se découpe en</div>
+      <div class="grid">
+        <div class="mini"><b>films</b><span>une ligne par film : les valeurs simples</span></div>
+        <div class="mini"><b>genres</b><span>une ligne par genre (19 au total)</span></div>
+        <div class="mini bridge"><b>film_genres</b><span>pont : quel film a quel genre</span></div>
+        <div class="mini"><b>personnes</b><span>une ligne par acteur ou technicien</span></div>
+        <div class="mini bridge"><b>casting</b><span>pont : qui joue quel rôle dans quel film</span></div>
+      </div>
+    </div>
+  </section>
+
+  <p class="note">Sources : les vraies réponses de <code>/movie/27205</code> obtenues dans Thunder Client et Postman (fiche du film, <code>credits.cast</code> et <code>credits.crew</code>), et la structure documentée de TMDB pour <code>/discover/movie</code> et <code>/genre/movie/list</code>, pas encore vérifiés de notre côté.</p>
+</article>
+
+<!-- ===================== API : PIÈGES ===================== -->
+<article class="tab" id="api-pieges" data-group="api" data-title="Les pièges repérés">
+  <header class="head">
+    <span class="kicker">L'API TMDB</span>
+    <h1>Les pièges repérés</h1>
+    <p class="lead">Les points à garder en tête pour l'ingestion, et à transmettre à B pour le nettoyage.</p>
+  </header>
+  <section>
+    <div class="grid">
+      <div class="box"><b class="t1">Des 0 qui veulent dire « inconnu »</b><span class="d"><code>budget</code>, <code>revenue</code> et <code>runtime</code> valent souvent 0 pour les films peu connus. Ce n'est pas un vrai zéro : laissé tel quel, il fausserait les moyennes.</span></div>
+      <div class="box"><b class="t1">Des dates écrites en texte</b><span class="d"><code>"2010-07-15"</code> est du texte pour le JSON. Il peut aussi être vide (<code>""</code>) pour un film sans date connue.</span></div>
+      <div class="box"><b class="t1">Des listes dans une seule case</b><span class="d"><code>genres</code>, <code>cast</code>, <code>crew</code>... Un tableau ne peut pas avoir une liste dans une case : il faudra les déplier en tableaux séparés.</span></div>
+      <div class="box"><b class="t1">La langue des textes <span class="status now">Décidé : anglais</span></b><span class="d"><code>language=fr-FR</code> traduirait <code>title</code>, <code>overview</code> et les noms de genres, mais les résumés français sont souvent vides. On demande donc <code>language=en-US</code>, écrit explicitement pour ne pas dépendre de la valeur par défaut de TMDB.</span></div>
+      <div class="box"><b class="t1">Une personne, plusieurs postes</b><span class="d">Dans <code>crew</code>, Nolan apparaît comme <code>Producer</code> et comme <code>Writer</code>. Le couple film + personne n'est pas unique : c'est <code>credit_id</code> qui l'est. Et pour trouver les réalisateurs, on filtre sur <code>job</code>, pas sur <code>known_for_department</code>, qui est la spécialité habituelle de la personne.</span></div>
+      <div class="box"><b class="t1">Des valeurs null</b><span class="d"><code>imdb_id</code>, <code>belongs_to_collection</code> ou les chemins d'images peuvent manquer. Le code ne doit pas planter dans ce cas.</span></div>
+      <div class="box"><b class="t1">Des listes qui bougent</b><span class="d">Le tri par popularité change d'un jour à l'autre. Deux lancements de discover ne donnent donc pas exactement les mêmes pages, d'où l'intérêt de dédoublonner les ids.</span></div>
+    </div>
+  </section>
+</article>
+
+<!-- ===================== API : NOTE D'EXPLORATION ===================== -->
+<article class="tab st1" id="api-note" data-group="api" data-title="Note d'exploration">
+  <header class="head">
+    <span class="kicker">L'API TMDB · Contrat 1 · Proposition à valider en équipe</span>
+    <h1>Note d'exploration</h1>
+    <p class="lead">Ce que l'ingestion demande à TMDB et ce qu'elle écrit dans <code>data/raw/</code>. Avec ça, B et C peuvent commencer sans attendre le script final. <b>En résumé :</b> environ 22 000 à 25 000 films sortis de 2000 à 2026, avec au moins 50 votes, en anglais. Chaque film est écrit tel que TMDB le renvoie, casting compris.</p>
+  </header>
+  <div class="recap"><span><b>Avant :</b> exploration de l'API et mesure des volumes.</span><span><b>Ensuite :</b> validation en équipe, puis échantillon de 200 films et script asynchrone.</span></div>
+
+  <section>
+    <h2>1. Périmètre</h2>
+    <div class="scroll"><table>
+      <tr><th>Réglage</th><th>Valeur</th><th>Pourquoi</th></tr>
+      <tr><td>Années de sortie</td><td>2000 à 2026</td><td>27 ans pour analyser des évolutions ; 2026 incomplète</td></tr>
+      <tr><td>Seuil de votes</td><td><code>vote_count.gte=50</code></td><td>Écarte les fiches presque vides et les notes non fiables</td></tr>
+      <tr><td>Langue</td><td><code>language=en-US</code></td><td>Résumés plus complets qu'en français</td></tr>
+      <tr><td>Films pour adultes</td><td><code>include_adult=false</code></td><td>Hors sujet</td></tr>
+    </table></div>
+    <p class="note">Volumes mesurés : 916 films en 2010 et 783 en 2025 avec le seuil, contre 18 183 en 2010 sans seuil. Une recherche par année reste sous la limite de 500 pages. Le détail est dans <a href="#cadrage-perimetre">Pourquoi cibler</a>.</p>
+  </section>
+
+  <section>
+    <h2>2. Ce qu'on demande à TMDB</h2>
+    <div class="scroll"><table>
+      <tr><th>Appel</th><th>Paramètres</th><th>Nombre d'appels</th></tr>
+      <tr><td><code>/discover/movie</code></td><td><code>primary_release_year</code>, <code>vote_count.gte=50</code>, <code>include_adult=false</code>, <code>sort_by=popularity.desc</code>, <code>language=en-US</code>, <code>page</code></td><td>~1 200 (27 ans × ~40 pages)</td></tr>
+      <tr><td><code>/movie/{id}</code></td><td><code>append_to_response=credits</code>, <code>language=en-US</code></td><td>~22 000 à 25 000 (un par film)</td></tr>
+      <tr><td><code>/genre/movie/list</code></td><td><code>language=en-US</code></td><td>1</td></tr>
+    </table></div>
+    <p>On demande la page 1 de discover, on lit <code>total_pages</code>, puis on demande les pages suivantes. On n'en garde que les <code>id</code>, qui servent à appeler <code>/movie/{id}</code>.</p>
+  </section>
+
+  <section>
+    <h2>3. Ce qu'on écrit dans data/raw/</h2>
+    <p>Chaque réponse est écrite <b>telle quelle</b>, sans rien retirer, renommer ni ajouter : une réponse JSON par ligne.</p>
+    <div class="scroll"><table>
+      <tr><th>Fichier</th><th>Une ligne =</th><th>Utilisé par</th></tr>
+      <tr><td><code>movies/year=YYYY.jsonl</code></td><td>la fiche complète d'un film, avec <code>credits</code></td><td><b>B : le fichier principal</b></td></tr>
+      <tr><td><code>genres/genres.jsonl</code></td><td>la liste des 19 genres (une seule ligne)</td><td>B, puis C</td></tr>
+      <tr><td><code>discover/year=YYYY.jsonl</code></td><td>une page de discover</td><td>Trace de la collecte</td></tr>
+      <tr><td><code>checkpoints/movies_YYYY.txt</code></td><td>l'id d'un film déjà traité</td><td>Usage interne</td></tr>
+    </table></div>
+    <ul>
+      <li><code>YYYY</code> est l'année de sortie demandée à discover.</li>
+      <li>Si l'ingestion est interrompue puis relancée, un film peut apparaître deux fois : B dédoublonne sur <code>id</code>.</li>
+      <li>Avant le script complet, A fournit un échantillon d'environ 200 films pour que B et C démarrent.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>4. Contenu d'une ligne de movies/</h2>
+    <p>Tous les champs, avec leur type et un exemple, sont dans la <a href="#api-carte">Carte des données</a>. Les points d'attention pour le nettoyage sont dans <a href="#api-pieges">Les pièges repérés</a>.</p>
+    <p class="note"><b>Vérifié :</b> la fiche du film, <code>credits.cast</code> et <code>credits.crew</code>. Inception pèse 38 Ko et a mis 495 ms à arriver : une requête à la fois prendrait plus de 3 heures pour 24 000 films, d'où l'asynchrone. <b>Encore à vérifier :</b> la structure de <code>/discover/movie</code> et <code>/genre/movie/list</code>.</p>
+  </section>
+
+  <section>
+    <h2>5. Ce qui reste à valider en équipe</h2>
+    <ul>
+      <li>Le périmètre : 2000-2026, au moins 50 votes, en anglais.</li>
+      <li>Les champs gardés dans les Parquet (contrat 2) : par exemple, <code>crew</code> en entier ou seulement les réalisateurs ?</li>
+      <li>La date de collecte : la noter dans la Dataset Card, ou l'ajouter à côté des fichiers bruts sans toucher aux réponses ?</li>
+    </ul>
+    <p class="note">La version à partager avec l'équipe, plus détaillée (dictionnaire complet des champs) : <a href="note_exploration.md" target="_blank" rel="noopener">note_exploration.md</a>.</p>
+  </section>
+</article>
+
+<!-- ===================== CADRAGE : PÉRIMÈTRE ===================== -->
+<article class="tab" id="cadrage-perimetre" data-group="cadrage" data-title="Pourquoi cibler">
+  <header class="head">
+    <span class="kicker">Cadrage</span>
+    <h1>Pourquoi cibler</h1>
+    <p class="lead">TMDB compte plus d'un million de films, sans parler des séries et des personnes. On ne récupère pas tout : on fixe un <b>périmètre</b>.</p>
+  </header>
+
+  <section>
+    <h2>Pourquoi ne pas tout prendre ?</h2>
+    <div class="grid">
+      <div class="box"><b class="t1">La qualité</b><span class="d">La grande majorité sont des courts métrages, des films amateurs ou des fiches presque vides : 0 vote, pas de durée, pas de budget.</span></div>
+      <div class="box"><b class="t1">Le temps</b><span class="d">TMDB limite le nombre de requêtes par seconde. Tout récupérer prendrait des heures, pour des données en partie inutiles.</span></div>
+      <div class="box"><b class="t1">Le projet</b><span class="d">La fiche demande un volume « suffisant pour justifier un pipeline », pas le maximum possible.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Les deux réglages du périmètre</h2>
+    <div class="grid">
+      <div class="box"><b class="t1">Les années : 2000 à 2026 <span class="status now">Décidé</span></b><span class="d">27 ans, de quoi analyser des évolutions dans le temps. On demande à discover une année à la fois. 2026 n'est pas terminée et ses films ont encore peu de votes : elle sera incomplète, ce qu'on signalera dans la Dataset Card.</span></div>
+      <div class="box"><b class="t1">Un seuil de 50 votes <span class="status now">Retenu, à valider en équipe</span></b><span class="d"><code>vote_count.gte=50</code>. Une note fondée sur 2 votes ne veut rien dire. Un seuil de 10 garde trop de fiches presque vides ; un seuil de 500 ne garde que les gros films. 50 est un compromis courant.</span></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Les chiffres mesurés</h2>
+    <div class="scroll"><table>
+      <tr><th>Requête /discover/movie</th><th>Films (total_results)</th><th>Pages (total_pages)</th></tr>
+      <tr><td>2010, sans seuil</td><td>18 183</td><td>910</td></tr>
+      <tr><td>2010, au moins 50 votes</td><td>916</td><td>46</td></tr>
+      <tr><td>2025, au moins 50 votes</td><td>783</td><td>40</td></tr>
+    </table></div>
+    <ul>
+      <li><b>Le seuil écarte 95 % des films</b> de 2010 : surtout des fiches presque vides.</li>
+      <li><b>Sans seuil, 2010 dépasserait la limite de 500 pages :</b> on ne pourrait pas tout récupérer en une recherche.</li>
+      <li><b>Volume attendu : environ 22 000 à 25 000 films</b> sur 2000-2026 (2026 incomplète).</li>
+      <li><b>Une recherche par année suffit</b> (46 pages au maximum), pas besoin de découper par mois.</li>
+      <li>Avec le casting, la table <code>casting</code> devrait dépasser 500 000 lignes : idéal pour mesurer le gain d'un index.</li>
+    </ul>
+  </section>
+</article>
+
+<!-- ===================== CADRAGE : HUB ===================== -->
+<article class="tab" id="cadrage-hub" data-group="cadrage" data-title="Hugging Face, sans IA">
+  <header class="head">
+    <span class="kicker">Cadrage</span>
+    <h1>Hugging Face, sans IA</h1>
+    <p class="lead">Il n'y a <b>pas de machine learning</b> dans ce projet, ni de prévision (forecast).</p>
+  </header>
+  <section>
+    <h2>À quoi sert Hugging Face ici</h2>
+    <p>Hugging Face est connu pour l'IA, mais on se sert ici de son <b>Hub</b> : c'est comme <b>GitHub, mais pour les données</b>. On y dépose notre dataset propre avec sa fiche descriptive, la Dataset Card. N'importe qui, à commencer par nous, peut ensuite le récupérer en deux lignes de Python :</p>
+<pre>from datasets import load_dataset
+films = load_dataset("notre-groupe/tmdb-cinema", "movies", revision="v1.0.0")</pre>
+  </section>
+  <section>
+    <h2>Un projet de data engineering</h2>
+    <p>Le data engineering est le métier qui consiste à <b>construire le tuyau</b> qui amène des données propres et fiables. Ce que d'autres en font ensuite (analyses, IA) vient après. Le dataset publié pourrait servir plus tard à prédire la note d'un film ou à recommander des films, mais c'est <b>hors du périmètre</b>. On peut le citer en « pistes d'amélioration » à la fin de la présentation.</p>
+  </section>
+</article>
+
+<!-- ===================== CADRAGE : ANALYSES ===================== -->
+<article class="tab" id="cadrage-analyses" data-group="cadrage" data-title="Ce qu'on peut analyser">
+  <header class="head">
+    <span class="kicker">Cadrage</span>
+    <h1>Ce qu'on peut analyser</h1>
+    <p class="lead">La fiche demande au moins 5 requêtes SQL d'analyse. Ces questions décideront aussi des champs à récupérer : on part des questions, puis on choisit les données.</p>
+  </header>
+  <section>
+    <div class="scroll"><table>
+      <tr><th>Question</th><th>Données nécessaires</th><th>Technique SQL</th></tr>
+      <tr><td>Quel genre a la meilleure note moyenne ?</td><td>notes, genres</td><td>jointure, <code>GROUP BY</code></td></tr>
+      <tr><td>Les films sont-ils plus longs qu'avant ?</td><td>durée, date de sortie</td><td>window function (<code>LAG</code>)</td></tr>
+      <tr><td>Quels sont les 3 meilleurs films de chaque année ?</td><td>notes, date de sortie</td><td>window function (<code>ROW_NUMBER</code>)</td></tr>
+      <tr><td>Quels acteurs tournent le plus ?</td><td>casting</td><td>CTE, jointure</td></tr>
+      <tr><td>Quels genres sont les plus rentables ?</td><td>budget, recettes, genres</td><td>jointure, <code>GROUP BY</code></td></tr>
+      <tr><td>Quels réalisateurs ont la meilleure moyenne ?</td><td>équipe (<code>crew</code>), notes</td><td>jointure, <code>GROUP BY</code></td></tr>
+    </table></div>
+    <p class="note">La rentabilité ne se calcule que pour les films dont le budget et les recettes sont connus (pas à 0). Les réalisateurs demandent de garder <code>crew</code>, pas seulement <code>cast</code>. <b>À décider : quelles questions on garde.</b></p>
+  </section>
+</article>
+
+<!-- ===================== ÉQUIPE : RÔLES ===================== -->
+<article class="tab" id="equipe-roles" data-group="equipe" data-title="Répartition et contrats">
+  <header class="head">
+    <span class="kicker">Équipe</span>
+    <h1>Répartition et contrats</h1>
+    <p class="lead">Ndeye Aida NDOUR, Yannis STAALI et Salma TALIB. Une étape par personne ; le README et la présentation se partagent, chacun rédige la partie de son étape.</p>
+  </header>
+  <section>
+    <div class="scroll"><table>
+      <tr><th>Rôle</th><th>Responsabilité</th><th>Dossiers</th></tr>
+      <tr><td><b>A, Ingestion</b> (Yannis)</td><td>Exploration de l'API, client asynchrone (sémaphore, nouvelles tentatives, checkpoint), découpage des dates, JSONL bruts</td><td><code>scripts/ingest/</code>, <code>data/raw/</code></td></tr>
+      <tr><td><b>B, Transformation</b></td><td>Nettoyage et typage par lots, sortie Parquet, tests pytest</td><td><code>scripts/transform/</code>, <code>data/processed/</code></td></tr>
+      <tr><td><b>C, Base SQL et publication</b></td><td>Schéma, chargement idempotent, 5 requêtes et index, puis script Hub et Dataset Card</td><td><code>sql/</code>, <code>scripts/load/</code>, <code>scripts/publish/</code></td></tr>
+    </table></div>
+    <p class="note">Propositions discutées, <b>pas encore validées</b> : confier le Hub à B (qui produit les Parquet publiés) pour alléger C ; chacun teste sa propre étape dans <code>tests/</code>.</p>
+  </section>
+  <section>
+    <h2>Les deux contrats à fixer ensemble</h2>
+    <ol>
+      <li><b>Ce que l'ingestion récupère</b> : quels appels, quels paramètres, quelle langue. Les JSONL restent une copie exacte de TMDB.</li>
+      <li><b>Les colonnes et types des Parquet</b> : ce que B produit et ce que C charge.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Déroulement</h2>
+    <ol>
+      <li><b>Ensemble :</b> finir l'exploration, choisir le seuil et le découpage, valider la licence et les deux contrats.</li>
+      <li><b>En parallèle :</b> chacun développe son étape sur un petit échantillon (200 films).</li>
+      <li><b>Ensemble :</b> intégration, publication sur le Hub, README testé de zéro, préparation de la présentation.</li>
+    </ol>
+  </section>
+</article>
+
+<!-- ===================== ÉQUIPE : ORGANISATION ===================== -->
+<article class="tab" id="equipe-organisation" data-group="equipe" data-title="Organisation">
+  <header class="head">
+    <span class="kicker">Équipe</span>
+    <h1>Organisation</h1>
+    <p class="lead">Git, arborescence du dépôt et règles communes.</p>
+  </header>
+  <section>
+    <h2>Git</h2>
+    <ul>
+      <li>Une branche par personne ou par fonctionnalité, fusionnée par pull request.</li>
+      <li>Relectures croisées : A relit B, B relit C, C relit A.</li>
+      <li>Ne jamais commiter <code>.env</code> ni <code>data/</code>.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Arborescence</h2>
+<pre>movie-analytics-pipeline/
+├── sql/                  # requêtes SQL (schéma, analyses, index)
+├── scripts/
+│   ├── ingest/           # ① récupérer
+│   ├── transform/        # ② nettoyer
+│   ├── load/             # ③ charger dans PostgreSQL
+│   └── publish/          # ④ publier sur le Hub
+├── data/                 # jamais dans Git
+│   ├── raw/              # données brutes, jamais modifiées
+│   └── processed/        # données propres (Parquet)
+├── tests/                # tests pytest
+├── docs/                 # cette doc et l'historique
+└── README.md             # doc d'utilisation et Dataset Card</pre>
+    <p class="note">La structure de base est imposée par la fiche de la prof. <code>scripts/load/</code>, <code>scripts/publish/</code> et <code>docs/</code> sont nos ajouts.</p>
+  </section>
+  <section>
+    <h2>Règles</h2>
+    <div class="grid">
+      <div class="box"><b class="t1">Secrets</b><span class="d">Clé TMDB, jeton Hugging Face, mot de passe de la base : dans le fichier <code>.env</code>, jamais dans Git.</span></div>
+      <div class="box"><b class="t1">Données</b><span class="d"><code>data/</code> n'est jamais dans Git, c'est trop gros. Chacun régénère les données avec les scripts.</span></div>
+      <div class="box"><b class="t1">Licence TMDB</b><span class="d">Usage non commercial, avec la mention « This product uses the TMDB API but is not endorsed or certified by TMDB ».</span></div>
+    </div>
+  </section>
+</article>
+
+<!-- ===================== LEXIQUE ===================== -->
+<article class="tab" id="lexique" data-group="lexique" data-title="Lexique">
+  <header class="head">
+    <h1>Lexique</h1>
+    <p class="lead">Les mots qu'on croise dans la fiche et dans le code, en version simple.</p>
+  </header>
+  <section>
+    <div class="scroll"><table>
+      <tr><th>Mot</th><th>En clair</th></tr>
+      <tr><td><b>API</b></td><td>Une adresse web faite pour les programmes : on demande, elle répond en JSON.</td></tr>
+      <tr><td><b>Endpoint</b></td><td>Une adresse précise de l'API, comme <code>/movie/{id}</code>.</td></tr>
+      <tr><td><b>Paramètre</b></td><td>Un réglage ajouté après le <code>?</code> de l'adresse : <code>language=fr-FR</code>.</td></tr>
+      <tr><td><b>JSON</b></td><td>Un format texte avec des étiquettes et des valeurs : <code>{"title": "Inception"}</code>.</td></tr>
+      <tr><td><b>JSON Lines</b></td><td>Un fichier avec un objet JSON par ligne.</td></tr>
+      <tr><td><b>Asynchrone</b></td><td>Lancer plusieurs demandes sans attendre la fin de chacune.</td></tr>
+      <tr><td><b>Sémaphore</b></td><td>Une limite : par exemple, 20 demandes en même temps au maximum.</td></tr>
+      <tr><td><b>Checkpoint</b></td><td>La liste de ce qui est déjà fait, pour reprendre après une coupure.</td></tr>
+      <tr><td><b>Parquet</b></td><td>Un format de fichier compact pour stocker des tableaux.</td></tr>
+      <tr><td><b>Traitement par lots</b></td><td>Lire les données par petits paquets pour ne pas saturer la mémoire.</td></tr>
+      <tr><td><b>Clé primaire</b></td><td>L'identifiant unique d'une ligne dans une table.</td></tr>
+      <tr><td><b>Table de liaison (pont)</b></td><td>Une table qui relie deux autres tables, comme <code>film_genres</code>.</td></tr>
+      <tr><td><b>Index</b></td><td>Comme le sommaire d'un livre : il évite à la base de tout parcourir.</td></tr>
+      <tr><td><b>Data engineering</b></td><td>Le métier qui construit le « tuyau » amenant des données propres et fiables.</td></tr>
+      <tr><td><b>Dataset Card</b></td><td>La fiche descriptive d'un dataset sur Hugging Face : contenu, source, licence.</td></tr>
+    </table></div>
+  </section>
+</article>
+
+</main>
+
+<footer>Fiche de la prof : <code>fiche_projet_pipeline_donnees.pdf</code> · Avancement : <a href="HISTORIQUE.md" target="_blank" rel="noopener">HISTORIQUE.md</a></footer>
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
+  var nav = document.getElementById('nav');
+  var items = Array.prototype.slice.call(document.querySelectorAll('.menu > li'));
+
+  // Ferme tous les menus déroulants (sauf celui passé en paramètre)
+  function closeDrops(except) {
+    items.forEach(function (li) {
+      if (li !== except) {
+        li.classList.remove('open');
+        var b = li.querySelector('button.top');
+        if (b) b.setAttribute('aria-expanded', 'false');
+      }
+    });
+  }
+
+  // Affiche l'onglet demandé dans l'URL (#etape-1...) et ajoute « Précédent / Suivant »
+  function show() {
+    var id = location.hash.slice(1) || 'accueil';
+    var idx = tabs.findIndex(function (t) { return t.id === id; });
+    if (idx < 0) { idx = 0; id = 'accueil'; }
+    tabs.forEach(function (t, i) { t.classList.toggle('shown', i === idx); });
+    var tab = tabs[idx];
+
+    document.querySelectorAll('.menu .top').forEach(function (el) {
+      el.classList.toggle('active', el.dataset.group === tab.dataset.group);
+    });
+    document.querySelectorAll('.drop a').forEach(function (a) {
+      a.classList.toggle('active', a.getAttribute('href') === '#' + id);
+    });
+
+    var old = tab.querySelector('.pager');
+    if (old) old.remove();
+    var pager = document.createElement('div');
+    pager.className = 'pager';
+    var prev = tabs[idx - 1], next = tabs[idx + 1];
+    pager.innerHTML =
+      (prev ? '<a href="#' + prev.id + '"><small>Précédent</small>← ' + prev.dataset.title + '</a>' : '<span></span>') +
+      (next ? '<a href="#' + next.id + '"><small>Suivant</small>' + next.dataset.title + ' →</a>' : '');
+    tab.appendChild(pager);
+
+    document.title = tab.dataset.title + ' · Movie Data Pipeline';
+    closeDrops();
+    nav.classList.remove('mobile-open');
+    document.getElementById('burger').setAttribute('aria-expanded', 'false');
+    window.scrollTo(0, 0);
+  }
+
+  items.forEach(function (li) {
+    var btn = li.querySelector('button.top');
+    if (!btn) return;
+    btn.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      // Sur ordinateur, le survol a déjà ouvert le menu : le clic ne doit pas le refermer
+      var desktop = window.matchMedia('(min-width: 901px)').matches;
+      var open = desktop || !li.classList.contains('open');
+      closeDrops(li);
+      li.classList.toggle('open', open);
+      btn.setAttribute('aria-expanded', String(open));
+    });
+    // Sur ordinateur, le menu s'ouvre aussi au survol ; il se ferme avec un court délai
+    // pour laisser le temps à la souris de rejoindre le menu
+    var timer;
+    li.addEventListener('mouseenter', function () {
+      if (!window.matchMedia('(min-width: 901px)').matches) return;
+      clearTimeout(timer);
+      closeDrops(li);
+      li.classList.add('open');
+      btn.setAttribute('aria-expanded', 'true');
+    });
+    li.addEventListener('mouseleave', function () {
+      if (!window.matchMedia('(min-width: 901px)').matches) return;
+      timer = setTimeout(function () {
+        li.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+      }, 250);
+    });
+  });
+
+  document.addEventListener('click', function () { closeDrops(); });
+  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') closeDrops(); });
+  document.getElementById('burger').addEventListener('click', function (ev) {
+    ev.stopPropagation();
+    var open = nav.classList.toggle('mobile-open');
+    this.setAttribute('aria-expanded', String(open));
+  });
+
+  window.addEventListener('hashchange', show);
+  show();
+})();
+</script>
+</body>
+</html>
