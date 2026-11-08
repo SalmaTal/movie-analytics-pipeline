@@ -23,6 +23,12 @@ Quand une explication ou une décision a valeur de référence (rôles, étapes,
 - Une étape à la fois. Toujours expliquer le pourquoi avant le comment.
 - Faire un rappel léger (une ligne) de ce qui précède et de ce qui suit.
 - Ne pas écrire ni modifier de code sans un feu vert explicite : discuter d'abord.
+- Méthode de travail pour le code, une étape à la fois :
+  1. expliquer ce que fait l'étape et pourquoi ;
+  2. écrire le code, avec des commentaires ;
+  3. s'arrêter pour laisser Yannis le lire et poser ses questions ;
+  4. attendre qu'il dise de passer à la suite. Ne jamais enchaîner plusieurs étapes.
+- Yannis avance sans attendre la validation de l'équipe, et l'informe ensuite.
 - Écrire en français.
 
 ## Règles du dépôt

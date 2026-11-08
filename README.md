@@ -40,19 +40,7 @@ cp .env.example .env             # puis renseigner les valeurs
 ...
 
 ## Utilisation
-### 1. Ingestion (API TMDB → data/raw/)
-python -m scripts.ingest.fetch_movies --years 2010 --max-pages 5
-
-- `--years` : une ou plusieurs années (`--years 2010 2011 2012`)
-- `--max-pages` : pages `/discover/movie` par année, 20 films par page (5 pages = 100 films, max 500)
-- `--concurrency` : requêtes simultanées (sémaphore, 20 par défaut)
-
-Fichiers produits :
-- `data/raw/discover/year=YYYY.jsonl` : une ligne par page de résultats
-- `data/raw/movies/year=YYYY.jsonl` : une ligne par film (fiche + casting)
-- `data/raw/checkpoints/movies_YYYY.txt` : ids déjà traités
-
-En cas d'interruption, relancer la même commande : les pages et films déjà récupérés sont sautés.
+...
 
 ## Tests
 pytest

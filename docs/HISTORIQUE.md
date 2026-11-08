@@ -3,10 +3,9 @@
 ## Où on en est
 
 - **Étape en cours :** ① Récupérer (ingestion), phase d'exploration de l'API TMDB à la main avec Thunder Client.
-- **Prochaine action :** partager `docs/note_exploration.md` avec l'équipe pour validation.
+- **Prochaine action :** étape 4 du script, une boucle simple sur les ids de 2010 avec `get_movie` et une mesure du temps (en attente du feu vert).
 - **Décisions en attente :**
-  - validation de la note d'exploration (périmètre, langue, fichiers) par Aida et Salma ;
-  - garder ou supprimer le script d'ingestion écrit trop tôt (voir le 2026-11-03) ;
+  - informer Aida et Salma de la note d'exploration (Yannis avance sans attendre leur validation) ;
   - qui publie sur Hugging Face, B ou C ;
   - quelles questions d'analyse on garde.
 
@@ -83,5 +82,58 @@ Le plus récent en bas.
   - Note, carte et pièges du site mis à jour.
 
   La fiche d'un film est maintenant entièrement vérifiée. Il reste la structure de `/discover/movie` et `/genre/movie/list`, qui vient de la doc.
+- **Méthode d'équipe :** Yannis prend l'initiative. Il avance sur l'ingestion avec la note d'exploration comme référence, puis informe l'équipe, sans attendre sa validation.
+- **Commit `46ba8ce` « setup du projet »** (par Yannis, poussé sur `origin/main`) : il contient la doc, `CLAUDE.md`, le `.gitignore`, `requirements.txt`, `.env.example`, `pytest.ini`, le PDF de la fiche, ainsi que l'ancien script d'ingestion et ses tests.
+- **On repart de zéro pour l'ingestion :** suppression locale, non commitée, de `scripts/ingest/fetch_movies.py`, `tests/test_ingest.py` et de la section Utilisation du README. Ils restent dans l'historique Git (commit `46ba8ce`). On garde `.gitignore`, `requirements.txt`, `.env.example` et `pytest.ini`, qui servent à tout le projet.
 - **Premier incident Postman :** trois réponses identiques, car l'onglet renvoyait la même requête. Solution : un nouvel onglet par requête, et vérifier l'onglet Params avant d'envoyer.
 - **Réseau :** depuis le poste Thales, l'agent ne peut pas appeler l'API TMDB (bloquée par la politique de sécurité). Les requêtes se font dans Thunder Client par Yannis.
+
+### 2026-11-08
+
+- **Méthode de travail pour le code :** pour chaque étape, Claude explique, écrit le code commenté, puis s'arrête. Yannis lit, pose ses questions et donne le feu vert pour passer à la suite. Ajouté dans `CLAUDE.md`.
+- **Plan du script d'ingestion, en 8 étapes :**
+  1. l'environnement ;
+  2. un appel en Python et l'écriture d'une ligne JSONL ;
+  3. discover pour une année ;
+  4. une boucle simple, avec mesure du temps ;
+  5. l'asynchrone et le sémaphore, avec mesure du gain ;
+  6. les timeouts et nouvelles tentatives ;
+  7. le checkpoint ;
+  8. tout le périmètre, les genres et les tests.
+- **Étape 1 (environnement), code écrit :**
+  - `.env` créé avec `TMDB_API_KEY` (ignoré par Git) ;
+  - `.env.example` : `TMDB_TOKEN` renommé en `TMDB_API_KEY`, puisqu'on utilise une clé v3 ;
+  - `scripts/ingest/config.py` regroupe la clé, `BASE_URL`, les dossiers et le périmètre (`YEARS` 2000-2026, `MIN_VOTES` 50, `LANGUAGE` en-US).
+
+  Vérifié : `python -m scripts.ingest.config` trouve bien la clé. En attente des questions de Yannis avant l'étape 2.
+- **Étape 2 (un appel en Python), code écrit :** `scripts/ingest/fetch_sync.py`, la version synchrone, gardée comme point de comparaison.
+  - `get_movie(movie_id)` appelle `/movie/{id}` avec `requests` (credits, en-US, timeout de 15 s) et renvoie un dictionnaire ;
+  - `append_jsonl(path, data)` ajoute une ligne JSON en UTF-8 ;
+  - le test d'Inception écrit dans `data/raw/essais/inception.jsonl` ;
+  - `requests` est ajouté à `requirements.txt`.
+
+  `append_jsonl` a été vérifié hors ligne. L'appel réel reste à lancer par Yannis, car l'agent n'a pas accès à TMDB depuis le poste Thales.
+- **Étape 2 validée par Yannis :** `python -m scripts.ingest.fetch_sync` fonctionne. Lancé deux fois, il écrit deux lignes identiques, ce qui illustre le besoin d'un checkpoint (étape 7).
+- **Étape 3 (discover pour une année), code écrit dans `fetch_sync.py` :**
+  - `get_json(path, params)` : la fonction commune à tous les appels (clé, langue, timeout, erreurs) ;
+  - `get_discover_page(year, page)` : avec `vote_count.gte=50`, `include_adult=false`, `sort_by=popularity.desc` ;
+  - `get_movie_ids(year)` : lit `total_pages` sur la page 1, parcourt les pages suivantes (500 au maximum), écrit chaque page dans `data/raw/discover/year=YYYY.jsonl` et renvoie les ids sans doublon ;
+  - le bas du fichier teste 2010 au lieu d'Inception.
+
+  Vérifié hors ligne avec de fausses réponses : pagination, dédoublonnage, paramètres. Reste à lancer par Yannis (on attend 916 films sur 46 pages).
+- **Erreur SSL au premier lancement de l'étape 3** (`CERTIFICATE_VERIFY_FAILED`) : le proxy Thales inspecte le HTTPS avec son propre certificat, que Python ne connaît pas. La solution proposée est `truststore` (Python utilise alors les certificats de Windows), pas encore appliquée. Le second lancement de Yannis est passé, sans doute sur un autre réseau. À ne jamais faire : `verify=False`.
+- **Premier lancement réel de discover pour 2010 :**
+  - `total_results` annoncé : 915, puis 914 pendant la collecte (les données bougent en direct) ;
+  - le fichier ne contient que **39 pages sur 46** : Yannis a interrompu le script (Ctrl+C), qui semblait figé faute d'affichage de progression ;
+  - **102 ids en double** sur 780 films lus : les mêmes films apparaissent sur deux pages voisines (par exemple pages 4 et 5). Le classement `popularity.desc` bouge pendant qu'on parcourt les pages. Conséquence : pour chaque doublon, un autre film est très probablement **manqué**. Il faut un tri plus stable et/ou des recherches plus petites (par mois). À décider.
+- **Affichage de progression ajouté** dans `get_movie_ids` : `page N/total`, réécrit sur la même ligne (`end="\r"`, `flush=True`). Yannis a réglé lui-même le problème de proxy, donc on n'utilise pas `truststore`. Prochaine modification : le tri par date de sortie et le découpage par mois.
+- **Mesure « avant » (tri `popularity.desc`, une recherche pour toute l'année 2010) :** 915 films annoncés, 46 pages, **810 ids uniques récupérés**, soit **105 films manqués (11,5 %)**. La progression s'affiche correctement.
+- **Correction de discover, code écrit dans `fetch_sync.py` :**
+  - tri `primary_release_date.asc` au lieu de `popularity.desc` ;
+  - une recherche par mois (`primary_release_date.gte` / `.lte`) au lieu de `primary_release_year` ;
+  - nouvelles fonctions `month_ranges(year)` (avec `calendar.monthrange`) et `get_all_pages(start, end, out_path)` ;
+  - une ligne de progression par mois et un bilan « films lus / uniques / doublons ».
+
+  Vérifié hors ligne : les mois, y compris février bissextile, et les paramètres envoyés. Reste à mesurer sur 2010 (« avant » : 810 uniques sur 915).
+- **Explication de la pagination :** chaque page est une requête indépendante. Le serveur ne se souvient de rien et refait filtre, tri et découpe en pages de 20 à chaque requête. Un tri qui bouge (la popularité) déplace donc des films entre deux pages pendant la lecture. Le site a été mis à jour (onglet Pièges, case « Des pages qui bougent pendant la lecture »).
+- **Mesure « après » (tri `primary_release_date.asc` + une recherche par mois), 2010 :** 12 mois de 3 à 6 pages, la somme des mois fait 914 films, **914 lus, 914 uniques, 0 doublon**. Avant : 810 uniques sur 915 (105 manqués). TMDB annonçait 915 lors du premier essai et 914 maintenant : les comptes de votes bougent en direct. **Correction validée.**
