@@ -167,3 +167,4 @@ Le plus récent en bas.
 
   L'exemple de code a été testé sur l'échantillon.
 - **Tout passe sur `main`, poussé sur GitHub** à la demande de Yannis : il est le seul à avoir travaillé sur le dépôt pour l'instant, et les pull requests ralentiraient l'équipe. La branche `ingestion` est fusionnée dans `main` (avance rapide). B récupère tout avec un simple `git pull`.
+- **README principal :** nouvelle section « Données disponibles pour la transformation », juste sous la description du projet. Elle indique le fichier à utiliser, les pièges principaux, renvoie vers `data/raw/README.md` et `docs/note_exploration.md`, et annonce la suite.

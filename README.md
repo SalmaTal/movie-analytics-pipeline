@@ -9,6 +9,26 @@ Dataset publié : <lien vers le dépôt Hugging Face>
 
 Construction de Pipeline de données complet : collecte de métadonnées de films depuis l'API TMDB, transformation, stockage dans une base SQL, puis publication d'un dataset sur le Hugging Face Hub.
 
+## Données disponibles pour la transformation
+
+**Le fichier à utiliser : [`data/raw/movies/year=2010.jsonl`](data/raw/movies/year=2010.jsonl)**
+
+- **Une ligne = la fiche complète d'un film**, casting compris (réponse brute de `/movie/{id}?append_to_response=credits`).
+- **Contenu actuel :** un échantillon de **200 films** sortis de janvier à mars 2010, avec au moins 50 votes, en anglais.
+- **Pour le récupérer :** `git pull`.
+- `data/raw/discover/` ne sert qu'à l'ingestion (la liste des ids) : pas besoin pour la transformation.
+
+**Les pièges principaux :**
+
+- `budget`, `revenue` et `runtime` valent `0` quand ils sont inconnus (56 % des budgets de l'échantillon) ;
+- `release_date` est du texte ;
+- dans `credits.crew`, une même personne peut avoir plusieurs postes ;
+- il faut dédoublonner sur `id`.
+
+Le mode d'emploi complet (lecture en Python, contenu d'une fiche, tous les pièges) est dans **[data/raw/README.md](data/raw/README.md)**. Le détail de chaque champ est dans [docs/note_exploration.md](docs/note_exploration.md).
+
+**La suite :** même format, un fichier par année de `year=2000.jsonl` à `year=2026.jsonl` (~24 000 films), dès que la version rapide de l'ingestion sera prête.
+
 
 ## Architecture
 API TMDB(ingestion asynchrone)  ──▶ data/raw (JSON Lines)──▶ data/processed/(Parquet )──► Base SQL (PostgreSQL)──▶ Hugging Face Hub
