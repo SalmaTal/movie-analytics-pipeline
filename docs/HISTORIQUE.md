@@ -3,7 +3,7 @@
 ## Où on en est
 
 - **Étape en cours :** ① Récupérer (ingestion), phase d'exploration de l'API TMDB à la main avec Thunder Client.
-- **Prochaine action :** étape 4 du script, une boucle simple sur les ids de 2010 avec `get_movie` et une mesure du temps (en attente du feu vert).
+- **Prochaine action :** prévenir B que l'échantillon est sur `main` (`data/raw/README.md`), puis phase 2, étape 5 (asynchrone avec aiohttp et sémaphore).
 - **Décisions en attente :**
   - informer Aida et Salma de la note d'exploration (Yannis avance sans attendre leur validation) ;
   - qui publie sur Hugging Face, B ou C ;
@@ -137,3 +137,33 @@ Le plus récent en bas.
   Vérifié hors ligne : les mois, y compris février bissextile, et les paramètres envoyés. Reste à mesurer sur 2010 (« avant » : 810 uniques sur 915).
 - **Explication de la pagination :** chaque page est une requête indépendante. Le serveur ne se souvient de rien et refait filtre, tri et découpe en pages de 20 à chaque requête. Un tri qui bouge (la popularité) déplace donc des films entre deux pages pendant la lecture. Le site a été mis à jour (onglet Pièges, case « Des pages qui bougent pendant la lecture »).
 - **Mesure « après » (tri `primary_release_date.asc` + une recherche par mois), 2010 :** 12 mois de 3 à 6 pages, la somme des mois fait 914 films, **914 lus, 914 uniques, 0 doublon**. Avant : 810 uniques sur 915 (105 manqués). TMDB annonçait 915 lors du premier essai et 914 maintenant : les comptes de votes bougent en direct. **Correction validée.**
+- **Commit `b8412b3`** « Ingestion : configuration et collecte discover par mois » sur une nouvelle branche **`ingestion`** (une branche par personne, comme prévu dans la répartition). Non poussé. `.vscode/` n'est pas commité.
+- **Changements de cadrage décidés par Yannis :**
+  - **pas de présentation orale** : le rendu est uniquement le dépôt GitHub. Les mesures iront dans le README ;
+  - **pas de chronométrage** pour l'instant, on verra plus tard ;
+  - **pas de liste des genres** (`/genre/movie/list`) : chaque fiche contient déjà ses genres (`id` + `name`). La note d'exploration est mise à jour, ainsi que la partie discover (par mois, tri par date de sortie).
+- **Organisation en deux phases :**
+  - **phase 1** : débloquer B au plus vite avec un échantillon de 200 films ;
+  - **phase 2** : l'asynchrone, les nouvelles tentatives, le checkpoint, tout le périmètre et les tests.
+- **Données partagées :** Yannis demandait s'il fallait commiter `data/`. Conseil : **non**, la fiche l'interdit explicitement. On envoie l'échantillon à B par Teams ou OneDrive, ou B lance le script avec sa propre clé.
+- **Étape 4, code écrit dans `fetch_sync.py` :**
+  - `fetch_movies(year, ids)` boucle sur `get_movie`, écrit dans `data/raw/movies/year=YYYY.jsonl`, affiche la progression et saute un film en erreur HTTP (404...) au lieu de tout arrêter ;
+  - chaque lancement repart de zéro : `unlink` des fichiers discover et movies de l'année, pour ne plus empiler les doublons des essais ;
+  - le bas du fichier lance 2010 avec un échantillon de 200 films (`SAMPLE_SIZE`).
+
+  Vérifié hors ligne (404 sauté, relance sans doublon). Reste à lancer par Yannis.
+- **Décision de Yannis : les JSON bruts de `data/raw/` sont commités**, pour que l'équipe les récupère avec `git pull`. La clé reste dans `.env`, ignoré. `.gitignore` est adapté : `data/raw/essais/` et `data/processed/` restent ignorés. `CLAUDE.md` et le site (onglet Organisation) sont mis à jour.
+- **Étape 4 lancée par Yannis, échantillon vérifié :**
+  - `discover/year=2010.jsonl` : 52 pages, 914 films, 914 uniques ;
+  - `movies/year=2010.jsonl` : 200 fiches (janvier à mars 2010), 0 ligne illisible, 0 doublon, toutes avec `credits` et un casting non vide, en anglais ;
+  - taille : **4,4 Mo**, soit ~22 Ko par film, donc ~20 Mo par année complète, sous la limite de 100 Mo par fichier de GitHub ;
+  - **constats pour B** : `budget` = 0 pour 113 films sur 200 (56 %), `revenue` = 0 pour 111, `runtime` = 0 pour 1 ; `overview` et `imdb_id` toujours remplis ; `vote_count` minimum = 50 ; 26 acteurs et 46 postes techniques en moyenne.
+
+  **Phase 1 terminée** : l'échantillon est prêt pour B.
+- **`data/raw/README.md` créé pour B :**
+  - le fichier à utiliser (`movies/year=2010.jsonl`), comment le récupérer (`git pull`) et le lire en Python ligne par ligne ;
+  - le contenu d'une fiche et les 6 pièges ;
+  - la suite : même format, un fichier par année de 2000 à 2026.
+
+  L'exemple de code a été testé sur l'échantillon.
+- **Tout passe sur `main`, poussé sur GitHub** à la demande de Yannis : il est le seul à avoir travaillé sur le dépôt pour l'instant, et les pull requests ralentiraient l'équipe. La branche `ingestion` est fusionnée dans `main` (avance rapide). B récupère tout avec un simple `git pull`.

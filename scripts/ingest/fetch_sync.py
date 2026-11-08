@@ -6,6 +6,10 @@ pour mesurer le gain de la version asynchrone.
 Étape 2 : récupérer la fiche d'un film et l'écrire dans un fichier JSON Lines.
 Étape 3 : récupérer la liste des films d'une année avec /discover/movie,
           mois par mois et triée par date de sortie (un tri stable).
+Étape 4 : récupérer la fiche complète de chaque film de la liste.
+
+Pour l'instant, chaque lancement repart de zéro : les anciens fichiers de l'année
+sont supprimés. Le checkpoint (étape 7) permettra de reprendre au lieu de recommencer.
 
 Usage :
     python -m scripts.ingest.fetch_sync
@@ -22,6 +26,7 @@ TMDB_MAX_PAGES = 500  # TMDB refuse les pages au-delà de 500 pour une même rec
 
 def get_json(path, params=None):
     """Envoie une requête GET à TMDB et renvoie la réponse sous forme de dictionnaire.
+    (la seule fonction a parler a l'api
 
     path   : la fin de l'adresse, par exemple "/movie/27205"
     params : les paramètres propres à cet appel (en plus de la clé et de la langue)
@@ -115,6 +120,9 @@ def get_movie_ids(year):
     """
     # Nom de fichier prévisible : on sait d'avance où trouver les données de 2010
     out_path = config.RAW_DIR / "discover" / f"year={year}.jsonl"
+    # On repart de zéro : sans ça, chaque lancement ajouterait ses pages à la suite
+    # de celles du lancement précédent. missing_ok=True : pas d'erreur si le fichier n'existe pas.
+    out_path.unlink(missing_ok=True)
 
     ids = []
     films_lus = 0  # tous les films vus, doublons compris : pour mesurer les doublons
@@ -132,8 +140,35 @@ def get_movie_ids(year):
     return ids
 
 
+def fetch_movies(year, ids):
+    """Récupère la fiche complète de chaque film et l'écrit dans data/raw/movies/year=YYYY.jsonl."""
+    out_path = config.RAW_DIR / "movies" / f"year={year}.jsonl"
+    out_path.unlink(missing_ok=True)  # on repart de zéro, comme pour discover
+
+    errors = 0
+    # enumerate numérote les éléments au fur et à mesure : i vaut 1, 2, 3... (start=1)
+    for i, movie_id in enumerate(ids, start=1):
+        try:
+            movie = get_movie(movie_id)
+        except requests.HTTPError as error:
+            # Un film peut avoir été supprimé de TMDB entre la liste et la fiche (404).
+            # On le signale et on continue, au lieu d'arrêter toute la collecte.
+            print(f"\n  film {movie_id} ignoré : {error}")
+            errors += 1
+            continue  # passe directement au film suivant
+
+        append_jsonl(out_path, movie)
+        # Progression sur une seule ligne, comme pour les pages
+        print(f"  film {i}/{len(ids)}", end="\r", flush=True)
+
+    print()  # passe à la ligne une fois la boucle finie
+    print(f"{year} : {len(ids) - errors} fiches écrites dans {out_path}, {errors} erreurs")
+
+
 def append_jsonl(path, data):
-    """Ajoute un dictionnaire à la fin d'un fichier JSON Lines (une ligne = un objet)."""
+    """Ajoute un dictionnaire à la fin d'un fichier JSON Lines (une ligne = un objet)
+    (la seule fonction a parler ecrire dans les fichiers)
+    """
     # Crée le dossier s'il n'existe pas encore (parents=True : avec ses dossiers parents)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -146,5 +181,11 @@ def append_jsonl(path, data):
 
 
 if __name__ == "__main__":
-    ids = get_movie_ids(2010)
-    print(f"{len(ids)} ids récupérés, par exemple : {ids[:5]}")
+    YEAR = 2010
+    SAMPLE_SIZE = 200  # échantillon pour démarrer la transformation ; None pour tous les films
+
+    ids = get_movie_ids(YEAR)
+    print(f"{len(ids)} ids récupérés")
+
+    # ids[:200] garde les 200 premiers ids ; ids[:None] les garde tous
+    fetch_movies(YEAR, ids[:SAMPLE_SIZE])
