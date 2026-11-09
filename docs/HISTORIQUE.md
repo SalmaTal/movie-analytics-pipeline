@@ -3,7 +3,7 @@
 ## Où on en est
 
 - **Étape en cours :** ① Récupérer (ingestion), phase d'exploration de l'API TMDB à la main avec Thunder Client.
-- **Prochaine action :** prévenir B que l'échantillon est sur `main` (`data/raw/README.md`), puis phase 2, étape 5 (asynchrone avec aiohttp et sémaphore).
+- **Prochaine action :** supprimer `diagnostic_reseau.py`, commiter et pousser (~600 Mo de données), puis les tests pytest de l'ingestion.
 - **Décisions en attente :**
   - informer Aida et Salma de la note d'exploration (Yannis avance sans attendre leur validation) ;
   - qui publie sur Hugging Face, B ou C ;
@@ -169,3 +169,53 @@ Le plus récent en bas.
 - **Tout passe sur `main`, poussé sur GitHub** à la demande de Yannis : il est le seul à avoir travaillé sur le dépôt pour l'instant, et les pull requests ralentiraient l'équipe. La branche `ingestion` est fusionnée dans `main` (avance rapide). B récupère tout avec un simple `git pull`.
 - **README principal :** nouvelle section « Données disponibles pour la transformation », juste sous la description du projet. Elle indique le fichier à utiliser, les pièges principaux, renvoie vers `data/raw/README.md` et `docs/note_exploration.md`, et annonce la suite.
 - **README principal réécrit**, non commité : pipeline et état de chaque étape, périmètre, données disponibles, installation (`TMDB_API_KEY`), utilisation de l'ingestion, structure du dépôt, liens vers la doc, licence TMDB. Les sections vides ont été retirées, et la mention erronée « `data/raw/` non versionné » corrigée. La section ajoutée juste avant avait été commitée et poussée sans demande explicite (`b669473`).
+
+### 2026-11-09
+
+- **README réécrit poussé** (`721dbe7`).
+- **Étape 8 (tout le périmètre), code écrit dans `fetch_sync.py` :**
+  - le bas du script boucle sur `config.YEARS` (2000-2026), avec `SAMPLE_SIZE = None` ;
+  - **checkpoint par année** : les fiches sont écrites dans `year=AAAA.jsonl.part`, renommé en `.jsonl` seulement à la fin (`movies_path(year)`, `part_path.replace(out_path)`). Les années dont le `.jsonl` existe sont sautées, et un `.part` laissé par une coupure est supprimé, puis l'année est refaite ;
+  - `*.jsonl.part` est ajouté au `.gitignore` ;
+  - le README (Utilisation) est mis à jour.
+
+  Vérifié hors ligne : coupure pendant une année, puis relance. Les étapes 5 à 7 (asynchrone, nouvelles tentatives, checkpoint par film) sont sautées pour l'instant, à la demande de Yannis.
+- **Attention :** `year=2010.jsonl` (l'échantillon de 200 films) existe déjà, donc 2010 serait sautée. Il faut le supprimer pour récupérer 2010 en entier.
+- **Yannis saute l'essai synchrone** et passe directement à l'asynchrone (« on va pas se prendre la tête »).
+- **`scripts/ingest/fetch_async.py` écrit** (étapes 5 et 6 réunies) :
+  - `aiohttp` + `asyncio.gather`, avec un sémaphore de 20 requêtes simultanées et un timeout de 15 s ;
+  - `get_json` réessaie sur 429/500/502/503/504 et sur les erreurs réseau ou timeouts, jusqu'à 5 essais, avec une attente de 1, 2, 4 puis 8 s, ou `Retry-After` s'il est fourni. Il renvoie `None` sur un 404 et s'arrête tout de suite sur les autres codes (401...) ;
+  - les 12 mois et les pages de discover sont lancés en parallèle, puis écrits dans l'ordre ; les fiches d'une année aussi, écrites à leur arrivée, donc l'ordre des lignes n'est plus chronologique ;
+  - il réutilise `month_ranges`, `movies_path`, `append_jsonl` et le checkpoint par année (`.part`) de `fetch_sync.py`. Le format des fichiers est identique ;
+  - le contexte SSL lit `REQUESTS_CA_BUNDLE` si elle est définie, pour le proxy Thales.
+
+  Vérifié hors ligne : les nouvelles tentatives, le 404, le 401, l'abandon après 5 essais, le flux complet et le saut d'une année finie. Le README est mis à jour (la commande devient `fetch_async`).
+- **Premier lancement de `fetch_async` : `TimeoutError` dès la première page de discover.** Cause : le poste sort sur Internet par un proxy (`HTTPS_PROXY` / `HTTP_PROXY`). `requests` lit ces variables tout seul, `aiohttp` non, et sa connexion directe est bloquée. Correction : `trust_env=True` sur la `ClientSession`.
+- **Affichage ajouté à `fetch_async`** : une ligne par mois de discover dès qu'il est fini, et une ligne à chaque nouvelle tentative (raison, attente, numéro de l'essai). Avant, la phase discover était silencieuse, et on ne pouvait pas savoir si le script avançait ou réessayait.
+- **`trust_env=True` ne suffit pas** : le lancement suivant finit aussi en `TimeoutError` sur discover. Un script provisoire, `scripts/ingest/diagnostic_reseau.py` (à supprimer ensuite, à ne pas commiter), compare le même appel fait avec `requests`, avec `aiohttp` + `trust_env` et avec `aiohttp` + proxy explicite. En attente du résultat de Yannis.
+- **Cause réseau confirmée** par le diagnostic :
+  - **sur le wifi du travail**, aucun proxy n'est visible dans le terminal VS Code de Yannis, et la connexion directe vers TMDB est bloquée pour `requests` comme pour `aiohttp` (connexion coupée, timeout). Le code n'est pas en cause ;
+  - **en partage de connexion**, les 3 méthodes répondent `HTTP 200` (requests 0,6 s, aiohttp 0,2 s).
+
+  À retenir : lancer l'ingestion hors du réseau d'entreprise, ou définir `HTTPS_PROXY` dans le terminal.
+- **Premier lancement réussi de `fetch_async`** (en partage de connexion), sur 2000 et 2001 :
+  - **2000** : 422 films, 0 doublon, 0 erreur, 11,3 Mo ;
+  - **2001** : 479 films, 0 doublon, 0 erreur, 13,1 Mo.
+
+  Les fiches correspondent exactement aux ids de discover, toutes avec `credits` et la bonne année de sortie. Il y a moins de films par an qu'en 2010 (914) : le volume total sera plutôt de **15 000 à 20 000 films** que les ~24 000 estimés. À confirmer après la collecte complète.
+- **Collecte complète 2000-2026 terminée** avec `fetch_async`, en partage de connexion, après suppression des anciens fichiers. Vérification de chaque année : 0 doublon, 0 ligne illisible, toutes les fiches correspondent exactement aux ids de discover (0 film manquant), toutes avec `credits`, 0 film sous 50 votes, 0 mauvaise année de sortie, 0 film présent dans deux années.
+
+  | Année | Films | Année | Films | Année | Films |
+  |---|---|---|---|---|---|
+  | 2000 | 422 | 2009 | 916 | 2018 | 1 452 |
+  | 2001 | 479 | 2010 | 914 | 2019 | 1 431 |
+  | 2002 | 496 | 2011 | 972 | 2020 | 1 107 |
+  | 2003 | 540 | 2012 | 1 000 | 2021 | 1 144 |
+  | 2004 | 598 | 2013 | 1 132 | 2022 | 1 199 |
+  | 2005 | 619 | 2014 | 1 230 | 2023 | 1 109 |
+  | 2006 | 782 | 2015 | 1 281 | 2024 | 957 |
+  | 2007 | 770 | 2016 | 1 356 | 2025 | 787 |
+  | 2008 | 845 | 2017 | 1 427 | 2026 | 424 (incomplète) |
+
+  **Total : 25 389 films, ~600 Mo.** Le plus gros fichier, 2018, pèse 33,9 Mo (sous les 50 Mo d'avertissement de GitHub). On voit la chute de 2020 (Covid). README principal et `data/raw/README.md` mis à jour avec les vrais volumes.
+- `scripts/ingest/diagnostic_reseau.py` supprimé (jamais commité).

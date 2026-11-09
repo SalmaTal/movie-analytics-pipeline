@@ -7,9 +7,12 @@ pour mesurer le gain de la version asynchrone.
 Étape 3 : récupérer la liste des films d'une année avec /discover/movie,
           mois par mois et triée par date de sortie (un tri stable).
 Étape 4 : récupérer la fiche complète de chaque film de la liste.
+Étape 8 : toutes les années du périmètre (2000 à 2026).
 
-Pour l'instant, chaque lancement repart de zéro : les anciens fichiers de l'année
-sont supprimés. Le checkpoint (étape 7) permettra de reprendre au lieu de recommencer.
+Reprise : une année terminée n'est jamais refaite. Pendant la collecte, les fiches
+sont écrites dans year=AAAA.jsonl.part, renommé en year=AAAA.jsonl seulement à la fin.
+Après une coupure, on relance : les années finies sont sautées, et l'année
+interrompue est refaite depuis le début.
 
 Usage :
     python -m scripts.ingest.fetch_sync
@@ -140,10 +143,22 @@ def get_movie_ids(year):
     return ids
 
 
+def movies_path(year):
+    """Chemin du fichier des fiches complètes d'une année : data/raw/movies/year=AAAA.jsonl."""
+    return config.RAW_DIR / "movies" / f"year={year}.jsonl"
+
+
 def fetch_movies(year, ids):
-    """Récupère la fiche complète de chaque film et l'écrit dans data/raw/movies/year=YYYY.jsonl."""
-    out_path = config.RAW_DIR / "movies" / f"year={year}.jsonl"
-    out_path.unlink(missing_ok=True)  # on repart de zéro, comme pour discover
+    """Récupère la fiche complète de chaque film et l'écrit dans data/raw/movies/year=YYYY.jsonl.
+
+    Les fiches sont d'abord écrites dans un fichier provisoire (.part). Il n'est renommé
+    en .jsonl qu'à la toute fin : si le fichier .jsonl existe, l'année est donc complète.
+    """
+    out_path = movies_path(year)
+    # Même nom, avec « .part » à la fin : year=2010.jsonl.part
+    part_path = out_path.with_name(out_path.name + ".part")
+    # Un .part qui traîne vient d'une collecte interrompue : on le supprime pour repartir propre
+    part_path.unlink(missing_ok=True)
 
     errors = 0
     # enumerate numérote les éléments au fur et à mesure : i vaut 1, 2, 3... (start=1)
@@ -157,11 +172,15 @@ def fetch_movies(year, ids):
             errors += 1
             continue  # passe directement au film suivant
 
-        append_jsonl(out_path, movie)
+        append_jsonl(part_path, movie)
         # Progression sur une seule ligne, comme pour les pages
         print(f"  film {i}/{len(ids)}", end="\r", flush=True)
 
     print()  # passe à la ligne une fois la boucle finie
+
+    # L'année est finie : on renomme le .part en .jsonl. C'est ce qui la marque comme complète.
+    # replace écrase un éventuel ancien fichier du même nom.
+    part_path.replace(out_path)
     print(f"{year} : {len(ids) - errors} fiches écrites dans {out_path}, {errors} erreurs")
 
 
@@ -181,11 +200,16 @@ def append_jsonl(path, data):
 
 
 if __name__ == "__main__":
-    YEAR = 2010
-    SAMPLE_SIZE = 200  # échantillon pour démarrer la transformation ; None pour tous les films
+    # Les années à récupérer. Pour un essai sur 2 ans : YEARS = range(2000, 2002)
+    YEARS = config.YEARS
+    SAMPLE_SIZE = None  # None : tous les films ; un nombre (200...) pour un échantillon
 
-    ids = get_movie_ids(YEAR)
-    print(f"{len(ids)} ids récupérés")
+    for year in YEARS:
+        # Année déjà terminée lors d'un lancement précédent : on ne la refait pas
+        if movies_path(year).exists():
+            print(f"{year} : déjà récupérée, on passe")
+            continue
 
-    # ids[:200] garde les 200 premiers ids ; ids[:None] les garde tous
-    fetch_movies(YEAR, ids[:SAMPLE_SIZE])
+        ids = get_movie_ids(year)
+        # ids[:200] garde les 200 premiers ids ; ids[:None] les garde tous
+        fetch_movies(year, ids[:SAMPLE_SIZE])

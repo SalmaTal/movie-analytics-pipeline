@@ -4,9 +4,9 @@ Ce dossier contient les réponses de l'API TMDB, **telles quelles**, au format J
 
 ## Le fichier à utiliser pour la transformation
 
-**`movies/year=2010.jsonl`** : une ligne = la fiche complète d'un film, casting compris.
+**`movies/year=AAAA.jsonl`**, un fichier par année de 2000 à 2026 : une ligne = la fiche complète d'un film, casting compris.
 
-- **Contenu actuel :** un échantillon de **200 films** sortis de janvier à mars 2010 (4,4 Mo).
+- **Contenu :** **25 389 films** au total, de 422 (2000) à 1 452 (2018) par an. 2026 est incomplète (424 films). Fichiers de 11 à 34 Mo, ~600 Mo en tout.
 - **Origine :** `/movie/{id}?append_to_response=credits&language=en-US`
 - **Périmètre :** films avec au moins 50 votes, textes en anglais.
 
@@ -29,7 +29,7 @@ with open("data/raw/movies/year=2010.jsonl", encoding="utf-8") as f:
         print(movie["id"], movie["title"], len(movie["credits"]["cast"]))
 ```
 
-Lis-le ligne par ligne comme ci-dessus : les fichiers complets seront beaucoup plus gros, et la fiche demande un traitement par lots.
+Lis les fichiers ligne par ligne comme ci-dessus, sans tout charger d'un coup : c'est ce que la fiche demande (traitement par lots).
 
 ## Ce qu'il y a dans une fiche
 
@@ -48,8 +48,6 @@ Le détail de chaque champ est dans [docs/note_exploration.md](../../docs/note_e
 5. **Le casting est long** : 26 acteurs et 46 postes techniques en moyenne. On peut ne garder que les premiers acteurs (`order < 10`, par exemple).
 6. **Dédoublonne sur `id`** : un film peut apparaître deux fois si l'ingestion est relancée après une coupure.
 
-## La suite côté ingestion
+## Pour démarrer
 
-- **Le format ne changera pas.** Tu peux développer ton script sur cet échantillon : il marchera tel quel sur les vraies données.
-- **Plus tard :** un fichier par année, de `movies/year=2000.jsonl` à `movies/year=2026.jsonl`, avec environ 900 films chacun (~24 000 films au total).
-- **En cours :** la version rapide de l'ingestion (asynchrone, reprise après coupure). Je te préviens quand les années complètes sont disponibles.
+Commence par une seule année (par exemple `movies/year=2010.jsonl`, 914 films) pour mettre au point ton script, puis lance-le sur toutes les années.

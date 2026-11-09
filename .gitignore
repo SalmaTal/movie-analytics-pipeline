@@ -224,3 +224,6 @@ __marimo__/
 data/raw/essais/
 data/processed/*
 !data/processed/.gitkeep
+
+# Fiches en cours d'écriture (collecte interrompue) : jamais versionnées
+*.jsonl.part
