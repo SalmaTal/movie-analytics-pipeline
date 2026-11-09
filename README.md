@@ -1,85 +1,105 @@
-# Movie Data analytics pipeline
-Un projet scolaire réalisé par :
-Ndeye Aida NDOUR
-Yannis STAALI
-Salma TALIB
-formation Data Engineer expert en IA (Ynov)
+# Movie Analytics Pipeline
 
-Dataset publié : <lien vers le dépôt Hugging Face>
+Pipeline de données sur les films : collecte depuis l'API [TMDB](https://www.themoviedb.org/), nettoyage, stockage dans PostgreSQL, puis publication d'un dataset sur le Hugging Face Hub.
 
-Construction de Pipeline de données complet : collecte de métadonnées de films depuis l'API TMDB, transformation, stockage dans une base SQL, puis publication d'un dataset sur le Hugging Face Hub.
+Projet de groupe de la formation **Data Engineer expert en IA** (Ynov) : Ndeye Aida NDOUR, Yannis STAALI, Salma TALIB.
 
-## Données disponibles pour la transformation
+## Le pipeline
 
-**Le fichier à utiliser : [`data/raw/movies/year=2010.jsonl`](data/raw/movies/year=2010.jsonl)**
+```
+API TMDB ──▶ data/raw/          ──▶ data/processed/  ──┬──▶ PostgreSQL
+             JSON Lines bruts       Parquet nettoyé    └──▶ Hugging Face Hub
+   ① Ingestion            ② Transformation      ③ Base SQL    ④ Publication
+```
 
-- **Une ligne = la fiche complète d'un film**, casting compris (réponse brute de `/movie/{id}?append_to_response=credits`).
-- **Contenu actuel :** un échantillon de **200 films** sortis de janvier à mars 2010, avec au moins 50 votes, en anglais.
-- **Pour le récupérer :** `git pull`.
-- `data/raw/discover/` ne sert qu'à l'ingestion (la liste des ids) : pas besoin pour la transformation.
+| Étape | Dossier | État |
+|---|---|---|
+| ① Ingestion | `scripts/ingest/` | En cours : échantillon de 200 films disponible |
+| ② Transformation | `scripts/transform/` | À venir |
+| ③ Base SQL | `sql/`, `scripts/load/` | À venir |
+| ④ Publication | `scripts/publish/` | À venir |
 
-**Les pièges principaux :**
+## Périmètre des données
 
-- `budget`, `revenue` et `runtime` valent `0` quand ils sont inconnus (56 % des budgets de l'échantillon) ;
-- `release_date` est du texte ;
-- dans `credits.crew`, une même personne peut avoir plusieurs postes ;
-- il faut dédoublonner sur `id`.
+| Réglage | Valeur |
+|---|---|
+| Films | sortis de 2000 à 2026, avec au moins 50 votes sur TMDB |
+| Volume attendu | ~24 000 films (environ 900 par an) |
+| Langue des textes | anglais (`en-US`) |
+| Contenu d'un film | fiche complète : dates, durée, budget, recettes, notes, genres, sociétés, pays, casting et équipe technique |
 
-Le mode d'emploi complet (lecture en Python, contenu d'une fiche, tous les pièges) est dans **[data/raw/README.md](data/raw/README.md)**. Le détail de chaque champ est dans [docs/note_exploration.md](docs/note_exploration.md).
+## Données disponibles
 
-**La suite :** même format, un fichier par année de `year=2000.jsonl` à `year=2026.jsonl` (~24 000 films), dès que la version rapide de l'ingestion sera prête.
+**Pour la transformation, le fichier à utiliser est [`data/raw/movies/year=2010.jsonl`](data/raw/movies/year=2010.jsonl).** Une ligne = la fiche complète d'un film. Il contient pour l'instant un échantillon de **200 films** (janvier à mars 2010).
 
+| Fichier | Une ligne = | Utilisé par |
+|---|---|---|
+| `data/raw/movies/year=AAAA.jsonl` | la fiche complète d'un film, casting compris | la transformation |
+| `data/raw/discover/year=AAAA.jsonl` | une page de la liste des films (résumés) | l'ingestion seulement |
 
-## Architecture
-API TMDB(ingestion asynchrone)  ──▶ data/raw (JSON Lines)──▶ data/processed/(Parquet )──► Base SQL (PostgreSQL)──▶ Hugging Face Hub
+Mode d'emploi, lecture en Python et pièges à connaître : **[data/raw/README.md](data/raw/README.md)**.
 
+## Installation
 
-## Structure du dépôt
-movie_analytics_pipeline/
-├── sql/ # Requêtes SQL
-├── scripts/
-│ ├── ingest/ # Collecte asynchrone
-│ └── transform/ # Transformations
-├── data/
-│ ├── raw/ # Données brutes, jamais modifiées
-│ └── processed/ # Données propres (Parquet)
-├── tests/ # Tests pytest
-└── README.md # Documentation et Dataset Card
-
-Les dossiers data/raw/ et data/processed/ ne sont pas versionnés dans Git (voir .gitignore).
-
-
-## Prérequis et installation
+```powershell
 python -m venv .venv
-source .venv/bin/activate        # Windows : .venv\Scripts\activate
+.venv\Scripts\Activate.ps1            # macOS / Linux : source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env             # puis renseigner les valeurs
+copy .env.example .env                # macOS / Linux : cp .env.example .env
+```
 
+Dans `.env`, renseigner la clé de l'API TMDB (gratuite, à demander sur [themoviedb.org](https://www.themoviedb.org/settings/api)) :
 
-## Configuration
-...
+```
+TMDB_API_KEY=ta_cle
+```
+
+Le fichier `.env` n'est jamais versionné.
 
 ## Utilisation
-...
 
-## Tests
-pytest
+### ① Ingestion
 
-## Données et analyses
-Source : API TMDB (/discover/movie, /movie/{id})
-Période couverte : <à compléter>
-Volume : <nombre de films, de lignes par table>
-Fréquence de mise à jour : <à compléter>
-...
+```powershell
+python -m scripts.ingest.fetch_sync
+```
+
+Récupère les films de 2010 (année et taille de l'échantillon réglables en bas du script) :
+
+1. la liste des films, mois par mois, avec `/discover/movie`, dans `data/raw/discover/` ;
+2. la fiche complète de chaque film avec `/movie/{id}`, dans `data/raw/movies/`.
+
+Chaque lancement repart de zéro pour l'année demandée. La version asynchrone (plus rapide, avec reprise après interruption) est en cours.
+
+Les étapes suivantes seront documentées ici au fur et à mesure.
+
+## Structure du dépôt
+
+```
+movie-analytics-pipeline/
+├── scripts/
+│   ├── ingest/
+│   │   ├── config.py        # clé API, périmètre, dossiers
+│   │   └── fetch_sync.py    # ingestion (version synchrone)
+│   ├── transform/           # nettoyage → Parquet
+│   ├── load/                # chargement dans PostgreSQL
+│   └── publish/             # publication sur Hugging Face
+├── sql/                     # schéma, requêtes d'analyse, index
+├── data/
+│   ├── raw/                 # réponses brutes de TMDB (versionnées)
+│   └── processed/           # données nettoyées (non versionnées)
+├── tests/                   # tests pytest
+└── docs/                    # documentation du projet
+```
+
+## Documentation
+
+- **[docs/index.html](docs/index.html)** : la doc du projet (étapes, API TMDB, cadrage). À ouvrir dans un navigateur.
+- **[docs/note_exploration.md](docs/note_exploration.md)** : ce que l'ingestion récupère, champ par champ.
+- **[docs/HISTORIQUE.md](docs/HISTORIQUE.md)** : l'avancement et les décisions.
+
 ## Licence et attribution
+
 This product uses the TMDB API but is not endorsed or certified by TMDB.
-Licence de la source : conditions d'utilisation de l'API TMDB (usage non commercial), <à confirmer avant publication>
-Licence du dataset : <à compléter>
-Licence du code : <à compléter>
 
-...
-
-## Dataset Card
-
-
-## Limites et pistes d'amélioration
+Les données proviennent de TMDB et sont soumises à ses [conditions d'utilisation](https://www.themoviedb.org/api-terms-of-use) (usage non commercial, attribution obligatoire).
