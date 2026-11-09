@@ -4,6 +4,18 @@ Pipeline de données sur les films : collecte depuis l'API [TMDB](https://www.th
 
 Projet de groupe de la formation **Data Engineer expert en IA** (Ynov) : Ndeye Aida NDOUR, Yannis STAALI, Salma TALIB.
 
+## Explication ingestion
+
+Salut ! Voilà ce qu'il faut savoir pour attaquer la transformation :
+
+- **Tes données sont dans [`data/raw/movies/`](data/raw/movies/)**. Il y a un fichier par année, de `year=2000.jsonl` à `year=2026.jsonl`, soit 25 389 films en tout. Chaque ligne, c'est la fiche complète d'un film, casting compris. C'est tout ce dont tu as besoin.
+- **Le dossier [`data/raw/discover/`](data/raw/discover/), tu peux l'ignorer.** C'est juste la liste des films telle que TMDB nous l'a envoyée, page par page. Elle a servi à trouver les ids des films, et on la garde comme trace de la collecte.
+- **Le script qui a récupéré les données, c'est [`scripts/ingest/fetch_async.py`](scripts/ingest/fetch_async.py).** `fetch_sync.py`, c'est la première version, plus lente, qui m'a servi à tester et à comprendre chaque étape. `config.py` contient les réglages : années, seuil de votes, langue.
+- **Avant de te lancer, lis [`data/raw/README.md`](data/raw/README.md)** : comment lire les fichiers en Python, et les pièges à connaître (les `0` qui veulent dire « inconnu », les dates en texte, etc.).
+- **Conseil :** commence par une seule année, par exemple `year=2010.jsonl`, et lis les fichiers ligne par ligne plutôt que tout charger d'un coup.
+
+Si un truc n'est pas clair, demande-moi !
+
 ## Le pipeline
 
 ```

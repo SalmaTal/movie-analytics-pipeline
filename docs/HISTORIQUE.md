@@ -219,3 +219,5 @@ Le plus récent en bas.
 
   **Total : 25 389 films, ~600 Mo.** Le plus gros fichier, 2018, pèse 33,9 Mo (sous les 50 Mo d'avertissement de GitHub). On voit la chute de 2020 (Covid). README principal et `data/raw/README.md` mis à jour avec les vrais volumes.
 - `scripts/ingest/diagnostic_reseau.py` supprimé (jamais commité).
+- **Push de `6e5ecda` fait par Yannis** : GitHub contient les 25 389 films.
+- **README principal :** nouvelle section « Explication ingestion », juste au-dessus de « Le pipeline », sur un ton familier pour la collègue chargée de la transformation. Elle précise : utiliser `data/raw/movies/`, ignorer `discover/` (une trace), le script de référence est `fetch_async.py` (`fetch_sync.py` = version de test), lire `data/raw/README.md`, commencer par une année. Non commité.
