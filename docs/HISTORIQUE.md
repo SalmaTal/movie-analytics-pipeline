@@ -230,7 +230,7 @@ Le plus récent en bas.
 ### 2026-11-09
 - **README réécrit**.
 - **Transformation :** `scripts/transform/transform.py` lit `data/raw/movies/` par lots de 1 000 films et écrit 5 tableaux Parquet typés dans `data/processed/` : `movies` (25 389 lignes), `genres` (19), `movie_genres` (60 263), `people` (674 561), `credits` (1 914 840).
-- **Mesures :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour XX Mo de Parquet. Aucun doublon de film dans les données de Yannis (25 389 lignes, 25 389 ids).
+- **Mesures :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour 81 Mo de Parquet. Aucun doublon de film dans les données de Yannis (25 389 lignes, 25 389 ids).
 
 ### 2026-11-10 
 - **README réécrit**.

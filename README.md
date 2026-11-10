@@ -97,7 +97,7 @@ pytest
 
 Lit `data/raw/movies/` par lots de 1 000 films, nettoie (0 « inconnus » devenus vides, dates typées, textes vides, doublons) et écrit 5 tableaux Parquet dans `data/processed/` : `movies`, `genres`, `movie_genres`, `people`, `credits`. Les colonnes et types sont décrits dans [docs/note_transformation.md](docs/note_transformation.md).
 
-**Mesuré sur 25 389 films :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour XX Mo de Parquet.
+**Mesuré sur 25 389 films :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour 81 Mo de Parquet.
 
 `data/processed/` n'est pas versionné : après un `git pull`, il se régénère avec la commande ci-dessus.
 

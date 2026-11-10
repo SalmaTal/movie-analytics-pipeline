@@ -52,7 +52,7 @@ Le script traite 1 000 films à la fois, sans charger les fichiers en entier.
 
 ## 5. Mesures
 
-Sur les 25 389 films : environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour XX Mo de Parquet.
+Sur les 25 389 films : environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour 81 Mo de Parquet.
 
 ## 6. À valider avec Salma
 
