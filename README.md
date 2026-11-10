@@ -29,7 +29,7 @@ API TMDB ──▶ data/raw/          ──▶ data/processed/  ──┬──
 | ① Ingestion | `scripts/ingest/` | Collecte complète : 25 389 films de 2000 à 2026 ; tests en cours |
 | ② Transformation | `scripts/transform/` | Faite : 25 389 films → 5 tableaux Parquet ; 8 tests pytest |
 | ③ Base SQL | `sql/`, `scripts/load/` | À venir |
-| ④ Publication | `scripts/publish/` | À venir |
+| ④ Publication | `scripts/publish/` | Faite : dataset privé sur le Hub, Dataset Card, tag v1.0.0 |
 
 ## Périmètre des données
 
@@ -101,6 +101,16 @@ Lit `data/raw/movies/` par lots de 1 000 films, nettoie (0 « inconnus » devenu
 
 `data/processed/` n'est pas versionné : après un `git pull`, il se régénère avec la commande ci-dessus.
 
+### ④ Publication
+
+```bash
+python scripts/publish/publish.py                # envoie les Parquet et la Dataset Card (dépôt privé)
+python scripts/publish/publish.py --tag v1.0.0   # pose le tag de version
+```
+
+Il faut un jeton Hugging Face de type Write dans `.env` (`HF_TOKEN=...`). Le dépôt est **privé** pendant le développement. Il peut etre changé en organisation et / ou public. La Dataset Card est écrite dans `scripts/publish/dataset_card.md` et envoyée comme `README.md` du dépôt. Le script peut être relancé sans danger : les fichiers identiques ne sont pas renvoyés.
+
+**Mesuré :** 589 Mo de JSON bruts, environ 81 Mo de Parquet (153 fichiers).
 
 ## Structure du dépôt
 
