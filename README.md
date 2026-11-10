@@ -27,7 +27,7 @@ API TMDB ──▶ data/raw/          ──▶ data/processed/  ──┬──
 | Étape | Dossier | État |
 |---|---|---|
 | ① Ingestion | `scripts/ingest/` | Collecte complète : 25 389 films de 2000 à 2026 ; tests en cours |
-| ② Transformation | `scripts/transform/` | À venir |
+| ② Transformation | `scripts/transform/` | Faite : 25 389 films → 5 tableaux Parquet ; 8 tests pytest |
 | ③ Base SQL | `sql/`, `scripts/load/` | À venir |
 | ④ Publication | `scripts/publish/` | À venir |
 
@@ -88,6 +88,19 @@ Le script est **asynchrone** (`aiohttp`) : jusqu'à 20 requêtes en même temps,
 `fetch_sync.py` est la version simple, une requête à la fois, gardée pour comparaison.
 
 Les étapes suivantes seront documentées ici au fur et à mesure.
+### ② Transformation
+
+```bash
+python -m scripts.transform.transform
+pytest
+```
+
+Lit `data/raw/movies/` par lots de 1 000 films, nettoie (0 « inconnus » devenus vides, dates typées, textes vides, doublons) et écrit 5 tableaux Parquet dans `data/processed/` : `movies`, `genres`, `movie_genres`, `people`, `credits`. Les colonnes et types sont décrits dans [docs/note_transformation.md](docs/note_transformation.md).
+
+**Mesuré sur 25 389 films :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour XX Mo de Parquet.
+
+`data/processed/` n'est pas versionné : après un `git pull`, il se régénère avec la commande ci-dessus.
+
 
 ## Structure du dépôt
 
@@ -114,6 +127,7 @@ movie-analytics-pipeline/
 - **[docs/index.html](docs/index.html)** : la doc du projet (étapes, API TMDB, cadrage). À ouvrir dans un navigateur.
 - **[docs/note_exploration.md](docs/note_exploration.md)** : ce que l'ingestion récupère, champ par champ.
 - **[docs/HISTORIQUE.md](docs/HISTORIQUE.md)** : l'avancement et les décisions.
+- **[docs/note_transformation.md](docs/note_transformation.md)** : les tableaux Parquet produits, colonnes et types.
 
 ## Licence et attribution
 

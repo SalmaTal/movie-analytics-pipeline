@@ -221,3 +221,21 @@ Le plus récent en bas.
 - `scripts/ingest/diagnostic_reseau.py` supprimé (jamais commité).
 - **Push de `6e5ecda` fait par Yannis** : GitHub contient les 25 389 films.
 - **README principal :** nouvelle section « Explication ingestion », juste au-dessus de « Le pipeline », sur un ton familier pour la collègue chargée de la transformation. Elle précise : utiliser `data/raw/movies/`, ignorer `discover/` (une trace), le script de référence est `fetch_async.py` (`fetch_sync.py` = version de test), lire `data/raw/README.md`, commencer par une année. Non commité.
+
+### 2026-11-06
+Aida, rôle B
+- **Méthode :** pour ne pas attendre l'ingestion, le nettoyage a d'abord été écrit et testé sur un faux échantillon construit d'après `docs/note_exploration.md` (0 « inconnus », date vide, `imdb_id` absent, doublon, personne avec deux postes).
+
+### 2026-11-09
+Aida, rôle B
+- **README réécrit**.
+- **Transformation :** `scripts/transform/transform.py` lit `data/raw/movies/` par lots de 1 000 films et écrit 5 tableaux Parquet typés dans `data/processed/` : `movies` (25 389 lignes), `genres` (19), `movie_genres` (60 263), `people` (674 561), `credits` (1 914 840).
+- **Mesures :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour XX Mo de Parquet. Aucun doublon de film dans les données de Yannis (25 389 lignes, 25 389 ids).
+
+### 2026-11-10 
+Aida, rôle B
+- **README réécrit**.
+- **Choix :** on garde tout le casting (cast et crew), contrairement à la proposition de la note d'exploration, pour décider ensuite avec Salma. La liste des genres est reconstruite à partir des fiches.
+- **Tests :** 8 tests pytest dans `tests/test_transform.py` (0 « inconnus », dates, textes vides, listes dépliées, personne avec deux postes, doublons sur le script complet).
+- **Contrat 2 :** `docs/note_transformation.md`, statut « proposition », à valider avec Salma.
+- **Hub :** Aida propose de prendre le script de publication et la Dataset Card, à confirmer avec Yannis et Salma.
