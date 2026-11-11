@@ -31,23 +31,27 @@ On attend donc 800 à 900 films par an. Une recherche par année reste sous la l
 
 ## 2. Ce qu'on demande à TMDB
 
-Tous les appels sont des `GET` sur `https://api.themoviedb.org/3`, avec la clé lue dans `.env` (`TMDB_TOKEN`).
+La liste des genres (`/genre/movie/list`) n'est pas récupérée : chaque fiche de film contient déjà ses genres avec leur `id` et leur `name`.
 
-### a. La liste des films d'une année : `/discover/movie`
+Tous les appels sont des `GET` sur `https://api.themoviedb.org/3`, avec la clé lue dans `.env` (`TMDB_API_KEY`).
+
+### a. La liste des films d'une année : `/discover/movie`, mois par mois
 
 ```
 GET /discover/movie
-    ?primary_release_year=2010
+    ?primary_release_date.gte=2010-01-01
+    &primary_release_date.lte=2010-01-31
     &vote_count.gte=50
     &include_adult=false
-    &sort_by=popularity.desc
+    &sort_by=primary_release_date.asc
     &language=en-US
     &page=1
 ```
 
-- On demande la page 1, on lit `total_pages`, puis on demande les pages suivantes.
+- Une recherche par mois. Pour chacune, on demande la page 1, on lit `total_pages`, puis on demande les pages suivantes.
+- **Tri par date de sortie, pas par popularité.** Chaque page est une requête séparée, et TMDB refait le tri à chaque fois. Avec `popularity.desc`, l'ordre bougeait entre deux pages : sur 2010, 810 films uniques sur 915, soit 105 manqués. Avec le tri par date et une recherche par mois : **914 uniques sur 914, 0 doublon**.
 - On n'en garde que les `id` des films, qui servent à l'appel suivant.
-- Environ 1 200 appels en tout (27 ans × une quarantaine de pages).
+- Environ 1 400 appels en tout (27 ans × 12 mois × 4 à 5 pages).
 
 ### b. La fiche complète de chaque film : `/movie/{id}`
 
@@ -60,14 +64,6 @@ GET /movie/27205
 - `append_to_response=credits` ajoute le casting et l'équipe technique dans la même réponse : un appel par film au lieu de deux.
 - Environ 22 000 à 25 000 appels.
 
-### c. La liste des genres : `/genre/movie/list`
-
-```
-GET /genre/movie/list?language=en-US
-```
-
-- Un seul appel : les 19 genres avec leur `id` et leur `name`. Utile pour la table `genres` de C.
-
 ---
 
 ## 3. Ce qu'on écrit dans `data/raw/`
@@ -77,7 +73,6 @@ Chaque réponse est écrite **telle quelle**, sans rien retirer, renommer ni ajo
 | Fichier | Une ligne = | Utilisé par |
 |---|---|---|
 | `data/raw/movies/year=YYYY.jsonl` | la réponse complète de `/movie/{id}?append_to_response=credits` pour un film | **B : c'est le fichier principal** |
-| `data/raw/genres/genres.jsonl` | la réponse de `/genre/movie/list` (une seule ligne) | B, puis C |
 | `data/raw/discover/year=YYYY.jsonl` | une page de `/discover/movie` | Personne : trace de la collecte |
 | `data/raw/checkpoints/movies_YYYY.txt` | l'`id` d'un film déjà traité | Usage interne de l'ingestion |
 
@@ -137,11 +132,22 @@ Les valeurs d'exemple sont celles d'Inception (`id` 27205).
 - `original_name` peut être dans un autre alphabet (`"渡辺謙"`).
 - La réponse d'Inception pèse 38 Ko et a mis 495 ms à arriver.
 
-**Encore à vérifier :** `/discover/movie` (sauf `total_pages` et `total_results`, déjà mesurés) et `/genre/movie/list`. Leur structure vient de la documentation TMDB. Le poste `job = "Director"` n'apparaît pas dans l'extrait observé, qui est tronqué.
+**Encore à vérifier :** la structure de `/discover/movie` (sauf `total_pages` et `total_results`, déjà mesurés) vient de la documentation TMDB. Le poste `job = "Director"` n'apparaît pas dans l'extrait observé, qui est tronqué.
 
 ---
 
 ## 5. Points d'attention pour la transformation (B)
+
+**Échantillon disponible :** `data/raw/movies/year=2010.jsonl`, 200 films sortis de janvier à mars 2010 (4,4 Mo). Constats mesurés sur cet échantillon :
+
+| Constat | Valeur |
+|---|---|
+| `budget` à 0 (inconnu) | 113 films sur 200 (56 %) |
+| `revenue` à 0 (inconnu) | 111 films sur 200 |
+| `runtime` à 0 (inconnu) | 1 film |
+| `overview` ou `imdb_id` vides | aucun |
+| Acteurs par film (`cast`) | 26 en moyenne |
+| Postes techniques par film (`crew`) | 46 en moyenne |
 
 1. **Des 0 qui veulent dire « inconnu ».** `runtime`, `budget` et `revenue` à `0` doivent devenir des valeurs vides, sinon les moyennes seront fausses.
 2. **Des dates en texte.** `release_date` est à convertir en vraie date. Un `""` devient une valeur vide.
