@@ -1,3 +1,7 @@
+CREATE SCHEMA IF NOT EXISTS pipeline;
+SET search_path TO pipeline, public;
+
+
 --table film :
 CREATE TABLE movies (
     id BIGINT PRIMARY KEY,
