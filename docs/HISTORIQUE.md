@@ -238,4 +238,8 @@ Le plus récent en bas.
 - **Tests :** 8 tests pytest dans `tests/test_transform.py` (0 « inconnus », dates, textes vides, listes dépliées, personne avec deux postes, doublons sur le script complet).
 - **Contrat 2 :** `docs/note_transformation.md`, statut « proposition », à valider avec Salma.
  - **Publication sur le Hub :** `scripts/publish/publish.py` crée un dépôt de dataset **privé**, envoie les 153 fichiers Parquet (environ 81 Mo) et la Dataset Card (`scripts/publish/dataset_card.md`), puis pose un tag avec `--tag`. Tag `v1.0.0` posé. Le dataset a été relu depuis le Hub avec `load_dataset(..., revision="v1.0.0")` : les 5 tableaux ont les mêmes nombres de lignes qu'après la transformation.
-- **Reste à décider en équipe :** la licence TMDB et le passage en public (les conditions de l'API sont non commerciales, non transférables et non sous-licenciables, la redistribution publique est à clarifier). Le dépôt est sous le compte personnel d'Aida (`NdeyeAidaNdour/tmdb-movies-2000-2026`), donc visible d'elle seule tant qu'il est privé. Il peut etre changé pour une organisation.
+- **Reste à décider en équipe :** la licence TMDB et le passage en public (les conditions de l'API sont non commerciales, non transférables et non sous-licenciables, la redistribution publique est à clarifier). Le dépôt est sous le compte personnel d'Aida (`NdeyeAidaNdour/tmdb-movies-2000-2026`), donc visible d'elle seule tant qu'il est privé.
+
+### 2026-11-10 
+- **Décision d'équipe :** le dataset est publié en **public** pour un usage pédagogique non commercial, attribution TMDB dans la Dataset Card.
+- **Dépôt hub passé en public**.
