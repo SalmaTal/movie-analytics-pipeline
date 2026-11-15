@@ -111,7 +111,7 @@ for t in ['movies','genres','movie_genres','people','credits']:
 python -m pytest -v
 ```
 
-**Attendu :** **25 tests passent** (17 d'ingestion, 8 de transformation). Les tests d'ingestion n'appellent pas TMDB, et ceux de transformation lisent `data/processed/`.
+**Attendu :** **25 tests passent** (17 d'ingestion, 8 de transformation). Les tests n'appellent pas TMDB et ne touchent pas à `data/` : ils écrivent dans un dossier temporaire. Ils peuvent donc se lancer avant l'ingestion, sur un clone neuf.
 
 ---
 
