@@ -5,8 +5,8 @@
 - **Étapes :** ① ingestion terminée (25 389 films, 2000-2026, poussée), 17 tests pytest ; ② transformation faite par Aida et reproduite par Yannis ; ③ base SQL faite par Salma ; ④ publication faite par Aida (Hub **public**, tag v1.0.0).
 - **En cours :** finitions pour coller à la fiche. Yannis les fait lui-même et prévient l'équipe ensuite.
 - **Prochaines actions, dans l'ordre :**
-  1. **mesurer** le nouveau `sql/benchmark.sql` là où la base existe (PostgreSQL ne tourne pas sur le poste de Yannis), puis reporter les temps dans `docs/note_cenception_sql.md` ;
-  2. commiter et pousser les changements du 2026-11-15, en **prévenant l'équipe avant** (voir le piège du `git pull` ci-dessous) ;
+  1. **tester tout le pipeline depuis zéro sur le VPS de Yannis**, en suivant `docs/TEST_VPS.md` (mesures du benchmark comprises), puis reporter les temps de l'index dans `docs/note_cenception_sql.md` ;
+  2. prévenir Aida et Salma : leur prochain `git pull` supprimera `data/raw/movies/` et `data/raw/discover/` chez elles (les copier avant) ;
 - **À signaler à Salma :** la mise en place de la base n'est documentée nulle part (voir le 2026-11-13) ; le script de chargement écrit les réglages de connexion en dur au lieu de lire `DATABASE_URL`.
 - **Idée bonus (pas demandée par la fiche) :** orchestrer le pipeline avec Airflow sur le VPS de Yannis (voir le 2026-11-13).
 - **Décisions en attente (équipe) :** garder ou non tout le `crew`.
@@ -322,3 +322,6 @@ Le plus récent en bas.
   - **Pas fait :** les ~600 Mo restent dans l'**historique** Git (les anciens commits). Les effacer demanderait de réécrire l'historique et de forcer le push, ce qui casse les copies de l'équipe. Non fait, à décider en équipe.
   - Non commité.
 - **Pas de soutenance** finalement (info de Yannis) : la présentation de 10 minutes prévue par la fiche n'est plus à préparer.
+- **Commit `3dcabaf` poussé sur `main`** : tests de l'ingestion, nouvel index, retrait de `data/` et docs. `docs/doc_yannis.html` et `docs/doc_chargement.html` restent hors du commit (docs personnelles).- **Test complet depuis zéro : impossible sur le poste Thales.** TMDB répond `SSLError` (proxy qui inspecte le HTTPS), et ni PostgreSQL ni Docker ne sont installés. Rien n'a été supprimé.
+- **`docs/TEST_VPS.md` écrit** : la procédure pour tout relancer sur le VPS de Yannis (Debian/Ubuntu), depuis un clone neuf (sans `data/`, donc page blanche) : ingestion avec mesure durée/RAM et test de reprise, transformation, pytest, PostgreSQL en Docker (port 5433 limité à `127.0.0.1`, base `movie_analytics` créée par `POSTGRES_DB`), `schema.sql`, chargement lancé deux fois (idempotence), analyses, benchmark lancé deux fois, lecture seule du Hub (on ne relance pas `publish.py`, le dataset est public). Valeurs attendues et tableau récapitulatif à remplir. Points faibles relevés : connexion en dur et mot de passe au clavier dans le chargement (bloquant pour Airflow), `publish.py` crée le dépôt en `private=True`. Non commité.
+- **README réécrit, plus court** : le dataset publié (lien), les chiffres clés, les 4 étapes en un tableau, l'installation, toutes les commandes (**étape ③ enfin documentée** : `schema.sql`, chargement, analyses, benchmark), la structure, les docs et la licence. La section « Explication ingestion », destinée à Aida, est retirée : elle renvoyait à des données qui ne sont plus dans Git. Non commité.

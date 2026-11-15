@@ -1,0 +1,529 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pense-bête · Pipeline TMDB</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Overpass:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Overpass+Mono:wght@500;700&display=swap">
+<style>
+/* Concept : le pipeline dessiné comme un plan de métro. Chaque ligne est une étape,
+   chaque station un fichier, une table ou une idée. On clique pour ouvrir sa fiche. */
+:root{
+  --bg:#EDF3F9; --surface:#FFFFFF; --sunken:#E0E9F2; --ink:#14202E; --muted:#526176; --rule:#CBD7E4;
+  --l1:#1565D8; --l2:#EA5F10; --l3:#0E9347; --l4:#8439CC; --l5:#E0AC00; --l6:#DD1F5B; --l7:#088E90;
+  --on1:#FFFFFF; --on2:#FFFFFF; --on3:#FFFFFF; --on4:#FFFFFF; --on5:#14202E; --on6:#FFFFFF; --on7:#FFFFFF;
+  --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --body:"Overpass","Trebuchet MS",system-ui,sans-serif;
+  --mono:"Overpass Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0D1520; --surface:#162130; --sunken:#1E2C3E; --ink:#EAF1F8; --muted:#A1B2C6; --rule:#2C3D52;
+  --l1:#5E9FFF; --l2:#FF9150; --l3:#43D088; --l4:#BC8EF7; --l5:#F4C93F; --l6:#FF6D98; --l7:#41D5D1;
+  --on1:#0D1520; --on2:#0D1520; --on3:#0D1520; --on4:#0D1520; --on5:#0D1520; --on6:#0D1520; --on7:#0D1520;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:70px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+button,input{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--l1);outline-offset:2px;border-radius:4px}
+h1,h2,h3{margin:0;text-wrap:balance}
+p{margin:0}
+code{font:500 .86em var(--mono);background:var(--sunken);padding:.05em .35em;border-radius:4px;overflow-wrap:anywhere}
+.wrap{max-width:1120px;margin-inline:auto;padding-inline:16px}
+
+/* Barre */
+.bar{position:sticky;top:0;z-index:9;background:var(--surface);border-bottom:1px solid var(--rule)}
+.bar .wrap{display:flex;align-items:center;gap:8px 16px;flex-wrap:wrap;padding-block:8px}
+.nav{display:flex;gap:2px;flex-wrap:wrap;flex:1 1 auto;min-width:0}
+.nav a{padding:6px 10px;border-radius:8px;font-weight:700;font-size:14px;color:var(--muted);text-decoration:none}
+.nav a:hover{background:var(--sunken);color:var(--ink)}
+.search{position:relative;flex:0 1 250px;min-width:170px}
+.search input{width:100%;padding:7px 12px;border-radius:99px;border:1.5px solid var(--rule);background:var(--bg);font-size:14px}
+.results{position:absolute;right:0;top:calc(100% + 6px);width:min(340px,calc(100vw - 32px));max-height:320px;overflow:auto;margin:0;padding:6px;list-style:none;background:var(--surface);border:1px solid var(--rule);border-radius:12px;box-shadow:0 12px 32px rgba(10,20,35,.22)}
+.results button{display:flex;gap:10px;align-items:center;width:100%;text-align:left;background:none;border:0;padding:7px 8px;border-radius:8px;font-size:14px}
+.results button:hover,.results button:focus-visible{background:var(--sunken)}
+.results .empty{padding:8px;color:var(--muted);font-size:14px}
+
+.bd{display:inline-grid;place-items:center;flex:none;width:24px;height:24px;border-radius:50%;background:var(--c);color:var(--on);font:800 13px/1 var(--body)}
+
+/* En-tête */
+.hero{padding-block:32px 8px}
+.eyebrow{font:700 13px var(--mono);letter-spacing:.04em;color:var(--muted)}
+.hero h1{font:900 clamp(50px,10vw,104px)/.92 var(--display);text-transform:uppercase;margin-block:8px 12px}
+.lede{font-size:18px;max-width:64ch}
+.pills{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
+.pill{display:flex;align-items:center;gap:8px;padding:5px 14px 5px 6px;border-radius:99px;border:2px solid var(--c);background:transparent;font-weight:700;font-size:14px}
+.pill:hover{background:var(--sunken)}
+.pill[aria-pressed="true"]{background:var(--c);color:var(--on)}
+.pill[aria-pressed="true"] .bd{background:var(--on);color:var(--c)}
+.pill small{font-weight:600;opacity:.75}
+
+/* Plan / lignage */
+.mapbox{overflow-x:auto;margin-top:14px;background:var(--surface);border-radius:16px;-webkit-overflow-scrolling:touch}
+#map{display:block;width:100%;min-width:900px;height:auto}
+#map .colt{font:800 13px var(--mono);letter-spacing:.06em;fill:var(--muted);text-anchor:middle;text-transform:uppercase}
+#map .cols{font:500 11px var(--mono);fill:var(--muted);text-anchor:middle}
+#map .colbg{fill:var(--bg)}
+.ed{fill:none;stroke:var(--c);stroke-width:7;stroke-linecap:round;transition:opacity .15s}
+.ed.dash{stroke-width:3;stroke-dasharray:3 8}
+.ed.todo{stroke-dasharray:1 12;stroke-width:6}
+.edl{font:700 11px var(--body);fill:var(--muted)}
+.st{cursor:pointer;outline:none;transition:opacity .15s}
+.st .dot{fill:var(--surface);stroke:var(--c);stroke-width:5;transition:r .12s}
+.st.todo .dot{stroke-dasharray:4 4}
+.st:hover .dot,.st:focus-visible .dot{r:15}
+.st:focus-visible .hit{stroke:var(--ink);stroke-width:2;stroke-dasharray:3 3}
+.hit{fill:transparent}
+.lab{font:700 13px var(--body);fill:var(--ink);text-anchor:middle;paint-order:stroke;stroke:var(--surface);stroke-width:5px;stroke-linejoin:round}
+.sub{font:500 11px var(--mono);fill:var(--muted);text-anchor:middle;paint-order:stroke;stroke:var(--surface);stroke-width:4px}
+#map.focus .st,#map.focus .ed{opacity:.13}
+#map.focus .st.lit,#map.focus .ed.lit{opacity:1}
+.maphint{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between;font-size:14px;color:var(--muted);padding-block:8px 0}
+.readout{min-height:24px;font-weight:600;color:var(--ink)}
+
+/* Sections */
+section{padding-block:52px 8px}
+.sh{display:grid;gap:4px;margin-bottom:20px}
+.sh h2{font:800 clamp(34px,6vw,50px)/1 var(--display);text-transform:uppercase}
+.sh p{color:var(--muted);max-width:66ch}
+.recap{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:14px;color:var(--muted);margin-bottom:16px}
+.recap b{color:var(--ink)}
+
+/* Chiffres */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(140px,100%),1fr));gap:10px}
+.stat{background:var(--surface);border-radius:14px;padding:14px 16px;border-top:5px solid var(--c);text-align:left;border-left:0;border-right:0;border-bottom:0;display:grid;gap:2px;align-content:start}
+.stat:hover{background:var(--sunken)}
+.stat b{font:800 42px/1 var(--display);font-variant-numeric:tabular-nums}
+.stat span{font-size:14px;color:var(--muted);line-height:1.35}
+.chartbox{background:var(--surface);border-radius:16px;padding:16px 16px 8px;margin-top:12px;position:relative}
+.chartbox h3{font-size:17px;font-weight:800}
+.chartbox p.note{font-size:14px;color:var(--muted)}
+#chart{display:block;width:100%;height:auto;margin-top:6px}
+#chart text{font:500 11px var(--mono);fill:var(--muted)}
+#chart .ann{font:700 12px var(--body);fill:var(--ink)}
+#chart .bar{fill:var(--l1)}
+#chart .bar.part{fill:url(#hatch)}
+#chart .hb{fill:transparent;cursor:default}
+#chart .bar.hot{opacity:.75}
+.tip{position:absolute;pointer-events:none;background:var(--ink);color:var(--bg);font:600 13px var(--body);padding:5px 9px;border-radius:8px;white-space:nowrap;transform:translate(-50%,-110%)}
+details.table{margin-top:6px;font-size:14px}
+details.table summary{cursor:pointer;color:var(--muted);font-weight:600}
+details.table table{border-collapse:collapse;margin-top:6px;font-variant-numeric:tabular-nums}
+details.table td,details.table th{padding:2px 12px 2px 0;text-align:left}
+
+/* Ingestion : ligne verticale */
+.vline{position:relative;display:grid;gap:10px;padding-left:46px;--c:var(--l1);--on:var(--on1)}
+.vline::before{content:"";position:absolute;left:15px;top:14px;bottom:14px;width:9px;border-radius:5px;background:var(--c)}
+.vst{position:relative;display:grid;gap:3px;text-align:left;background:var(--surface);border:0;border-radius:14px;padding:12px 16px}
+.vst:hover{background:var(--sunken)}
+.vst::before{content:attr(data-n);position:absolute;left:-46px;top:10px;width:30px;height:30px;border-radius:50%;background:var(--surface);border:5px solid var(--c);display:grid;place-items:center;font:800 12px var(--mono);color:var(--ink)}
+.vst b{font-size:17px}
+.vst span{font-size:14px;color:var(--muted)}
+.vst .path{font:500 12px var(--mono);color:var(--c)}
+
+/* Cartes génériques */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(240px,100%),1fr));gap:12px}
+.card{display:grid;gap:4px;align-content:start;text-align:left;border:0;background:color-mix(in srgb,var(--c) 12%,var(--surface));border-radius:14px;padding:14px 16px;min-width:0}
+.card:hover{background:color-mix(in srgb,var(--c) 22%,var(--surface))}
+.card .tag{font:700 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--c)}
+.card b{font-size:17px}
+.card span.d{font-size:15px;color:var(--muted);line-height:1.45}
+.more{font:700 12px var(--mono);color:var(--c);margin-top:4px}
+
+/* Une fiche devient 5 tableaux */
+.explode{display:grid;grid-template-columns:minmax(0,1fr) 54px minmax(0,1.5fr);align-items:center;margin-top:16px;background:var(--surface);border-radius:16px;padding:16px}
+.fiche{font:500 12px/1.7 var(--mono);background:var(--sunken);border-radius:10px;padding:10px 12px;overflow-x:auto;white-space:pre}
+.fiche i{font-style:normal;color:var(--l2);font-weight:700}
+.arrow{display:grid;place-items:center;color:var(--l2);font:800 26px var(--body)}
+.tables{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(170px,100%),1fr));gap:8px}
+.mini{text-align:left;border:2px solid var(--c);background:var(--surface);border-radius:10px;padding:8px 10px;display:grid;gap:1px}
+.mini:hover{background:var(--sunken)}
+.mini b{font:700 14px var(--mono)}
+.mini span{font-size:13px;color:var(--muted)}
+.mini.bridge{border-style:dashed}
+.vs{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:12px;margin-top:16px}
+.vs>div{background:var(--surface);border-radius:14px;padding:14px 16px;border-left:6px solid var(--c)}
+.vs h3{font-size:18px;margin-bottom:4px}
+.vs ul{margin:6px 0 0;padding-left:20px;display:grid;gap:3px;font-size:15px}
+.aside{font:700 24px/1.15 var(--display);max-width:44ch;padding-block:18px 0}
+
+/* Reste à faire */
+.todo{display:grid;gap:8px}
+.todo button{display:flex;gap:12px;align-items:center;text-align:left;background:var(--surface);border:0;border-radius:12px;padding:10px 14px}
+.todo button:hover{background:var(--sunken)}
+.todo .who{font:700 12px var(--mono);color:var(--muted);flex:none;width:72px}
+.todo .what{flex:1;min-width:0;font-weight:700}
+.todo .what small{display:block;font-weight:400;color:var(--muted);font-size:14px}
+.state{flex:none;font:700 12px var(--mono);letter-spacing:.04em;text-transform:uppercase;padding:3px 10px;border-radius:99px}
+.state.ok{background:var(--l3);color:var(--on3)}
+.state.go{background:var(--l5);color:var(--on5)}
+.state.wait{background:var(--sunken);color:var(--muted)}
+
+/* Lexique */
+.lex{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:4px 12px}
+.lex button{display:grid;gap:1px;text-align:left;background:none;border:0;border-bottom:1px solid var(--rule);padding:8px 4px}
+.lex button:hover{background:var(--surface)}
+.lex b{display:flex;gap:7px;align-items:center}
+.lex b i{width:9px;height:9px;border-radius:50%;background:var(--c)}
+.lex span{font-size:14px;color:var(--muted)}
+footer{padding-block:44px 32px;color:var(--muted);font-size:14px}
+
+/* Fenêtre */
+dialog{width:min(660px,calc(100vw - 32px));max-height:88dvh;padding:0;border:0;border-radius:18px;background:var(--surface);color:var(--ink);overflow:auto}
+dialog::backdrop{background:rgba(8,16,28,.6)}
+.mh{background:var(--c);color:var(--on);padding:18px 56px 16px 20px;position:relative}
+.mh .ey{display:flex;gap:8px;align-items:center;font-weight:700;font-size:14px}
+.mh .ey .bd{background:var(--on);color:var(--c)}
+.mh h2{font:800 36px/1.02 var(--display);margin-top:8px;overflow-wrap:anywhere}
+.mh .path{font:500 13px var(--mono);opacity:.9;margin-top:6px;overflow-wrap:anywhere}
+.close{position:absolute;top:12px;right:12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--on);color:var(--c);font:800 20px/1 var(--body)}
+.mb{padding:18px 20px 20px;display:grid;gap:16px}
+.mb .def{font-size:18px;line-height:1.5}
+.blk h3{font:700 12px var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+.blk ul{margin:0;padding-left:20px;display:grid;gap:4px}
+.blk.out{background:var(--sunken);border-radius:10px;padding:10px 14px}
+pre{margin:0;background:#1A1D2C;color:#E6E9F5;font:500 12.5px/1.6 var(--mono);padding:12px 14px;border-radius:10px;overflow-x:auto}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{display:flex;align-items:center;gap:6px;padding:3px 11px 3px 4px;border-radius:99px;border:1.5px solid var(--c);background:none;font-weight:700;font-size:14px}
+.chip:hover{background:var(--sunken)}
+.chip .bd{width:20px;height:20px;font-size:11px}
+.mf{display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--rule);padding-top:14px}
+.mf button{padding:7px 12px;border-radius:9px;border:1.5px solid var(--rule);background:none;font-weight:700;font-size:14px}
+.mf button:hover:not(:disabled){background:var(--sunken)}
+.mf button:disabled{opacity:.35;cursor:default}
+@media (max-width:760px){.explode{grid-template-columns:minmax(0,1fr)}.arrow{transform:rotate(90deg)}.bar{position:static}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<div class="bar"><div class="wrap">
+  <nav class="nav" aria-label="Sections">
+    <a href="#plan">Plan</a><a href="#chiffres">Chiffres</a><a href="#ingestion">Ingestion</a><a href="#transformation">Transformation</a><a href="#sql">Base SQL</a><a href="#pieges">Pièges</a><a href="#reste">Reste à faire</a><a href="#lexique">Lexique</a>
+  </nav>
+  <div class="search">
+    <input id="q" type="search" placeholder="Trouver une notion" aria-label="Trouver une notion" autocomplete="off">
+    <ul class="results" id="res" hidden></ul>
+  </div>
+</div></div>
+
+<main class="wrap">
+  <header class="hero" id="plan">
+    <p class="eyebrow">Pense-bête de Yannis · Movie Analytics Pipeline · Ynov</p>
+    <h1>Le réseau TMDB</h1>
+    <p class="lede">Des fiches de films récupérées sur TMDB, nettoyées en tableaux, rangées dans une base SQL et partagées sur Hugging Face. Chaque ligne du plan est une étape, chaque station un fichier ou une table. Clique sur une station pour ouvrir sa fiche.</p>
+    <div class="pills" id="pills"></div>
+  </header>
+
+  <div class="mapbox"><svg id="map" viewBox="0 0 1000 625" role="img" aria-label="Lignage des données, de l’API TMDB jusqu’à PostgreSQL et Hugging Face"></svg></div>
+  <div class="maphint">
+    <p class="readout" id="readout" aria-live="polite">Survole une station pour suivre d’où viennent ses données et ce qu’elles alimentent.</p>
+    <span>Traits pointillés fins : information, pas de copie de données · pointillés épais : étape pas encore faite</span>
+  </div>
+
+  <section id="chiffres">
+    <div class="sh"><h2>Les chiffres</h2><p>Les mesures réelles du projet. Clique sur une tuile pour savoir d’où vient le chiffre.</p></div>
+    <div class="stats" id="stats"></div>
+    <div class="chartbox">
+      <h3>Films récupérés par année de sortie</h3>
+      <p class="note">Films avec au moins 50 votes sur TMDB. 2026 est incomplète (hachurée) : l’année n’est pas finie.</p>
+      <svg id="chart" viewBox="0 0 900 280" role="img" aria-label="Nombre de films par année, de 422 en 2000 à 1 452 en 2018"></svg>
+      <div class="tip" id="tip" hidden></div>
+      <details class="table"><summary>Voir les chiffres en tableau</summary><table id="ctable"></table></details>
+    </div>
+  </section>
+
+  <section id="ingestion">
+    <div class="sh"><h2>L’ingestion</h2><p>Récupérer les fiches de films sur TMDB et les écrire telles quelles en JSON Lines. Huit stations, dans l’ordre où on les a construites.</p></div>
+    <div class="recap"><span><b>Avant :</b> rien, c’est le point de départ.</span><span><b>Après :</b> la transformation lit <code>data/raw/movies/</code>.</span></div>
+    <div class="vline" id="vline"></div>
+  </section>
+
+  <section id="transformation">
+    <div class="sh"><h2>La transformation</h2><p>La partie d’Aida : transformer les fiches JSON en tableaux propres et typés, au format Parquet. En une formule : normalisation + nettoyage + typage.</p></div>
+    <div class="recap"><span><b>Avant :</b> les 27 fichiers <code>movies/year=AAAA.jsonl</code> de l’ingestion.</span><span><b>Après :</b> Salma charge les Parquet dans PostgreSQL, Aida les publie sur le Hub.</span></div>
+    <div class="cards" id="tcards"></div>
+
+    <div class="explode">
+      <div class="fiche" aria-label="Une fiche JSON simplifiée">{ "id": 27205,
+  "title": "Inception",
+  "release_date": "2010-07-15",
+  "budget": 160000000,
+  <i>"genres"</i>: [ Action, Crime, … ],
+  "credits": {
+    <i>"cast"</i>: [ DiCaprio, … ],
+    <i>"crew"</i>: [ Nolan ×2, … ] } }</div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="tables" id="tables"></div>
+    </div>
+
+    <div class="vs">
+      <div style="--c:var(--l2)"><h3>Parquet</h3><p>Pour stocker et analyser de gros volumes.</p><ul><li>colonnes typées, fichier compact (589 Mo → 81 Mo) ;</li><li>on peut l’interroger directement en SQL avec DuckDB ;</li><li>mais il accepte tout : aucune règle de cohérence.</li></ul></div>
+      <div style="--c:var(--l3)"><h3>PostgreSQL</h3><p>Pour garantir la cohérence et partager l’accès.</p><ul><li>contraintes : refuse un <code>movie_id</code> inconnu ou un doublon de clé ;</li><li>chargement relançable sans doublons (upsert) ;</li><li>index mesurés avec <code>EXPLAIN ANALYZE</code>.</li></ul></div>
+    </div>
+    <p class="aside">Le code a été la partie rapide. Le vrai travail, c’est de comprendre ses données et de vérifier : sans mesure, on aurait perdu un film sur dix sans le voir.</p>
+  </section>
+
+  <section id="sql">
+    <div class="sh"><h2>La base SQL</h2><p>La partie de Salma : ranger les 5 tableaux Parquet dans PostgreSQL, avec des règles que la base vérifie elle-même, puis les interroger. Dans l’ordre où ça s’exécute.</p></div>
+    <div class="recap"><span><b>Avant :</b> les 5 tableaux Parquet de <code>data/processed/</code>.</span><span><b>Après :</b> 5 requêtes d’analyse et un test d’index.</span></div>
+    <div class="cards" id="scards"></div>
+    <div class="recap" style="margin-top:16px"><span><b>À noter (13 novembre) :</b> rien dans le dépôt n’explique comment créer la base et lancer <code>schema.sql</code>. Le script de chargement suppose que c’est déjà fait.</span></div>
+  </section>
+
+  <section id="pieges">
+    <div class="sh"><h2>Les pièges</h2><p>Ce qu’on a appris en se cognant dedans. Chacun a une cause, une mesure et une correction.</p></div>
+    <div class="cards" id="pcards"></div>
+  </section>
+
+  <section id="reste">
+    <div class="sh"><h2>Reste à faire</h2><p>État au 13 novembre 2026, d’après le dépôt et l’historique.</p></div>
+    <div class="todo" id="todo"></div>
+  </section>
+
+  <section id="lexique">
+    <div class="sh"><h2>Lexique</h2><p>Les mots du projet, en version simple.</p></div>
+    <div class="lex" id="lex"></div>
+  </section>
+
+  <footer>Pense-bête tenu à partir de nos échanges et des fichiers du dépôt (<code>docs/HISTORIQUE.md</code>, <code>docs/note_exploration.md</code>, <code>docs/note_transformation.md</code>, <code>docs/note_cenception_sql.md</code>). This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlgt"><div id="dlgbody"></div></dialog>
+
+<script>
+const LINES={
+ in:{n:'1',name:'Ingestion',who:'Yannis',c:1},
+ tr:{n:'2',name:'Transformation',who:'Aida',c:2},
+ sq:{n:'3',name:'Base SQL',who:'Salma',c:3},
+ hu:{n:'4',name:'Publication',who:'Aida',c:4},
+ pi:{n:'!',name:'Pièges',c:6},
+ co:{n:'?',name:'Concepts',c:7}
+};
+/* Toutes les fiches. d = définition, p = points, x = exemple, code, path, k = liens */
+const IT={
+/* --- Lignage : ingestion --- */
+api_discover:{l:'in',t:'/discover/movie',s:'liste des films',path:'GET https://api.themoviedb.org/3/discover/movie',d:'L’adresse de l’API qui donne la liste des films correspondant à des filtres. Elle répond par pages de 20 films, 500 pages au maximum. On n’en garde que les ids.',p:['Une recherche par mois, du 1er au dernier jour : `primary_release_date.gte` et `.lte`.','`vote_count.gte=50` : au moins 50 votes.','`sort_by=primary_release_date.asc` : un tri qui ne bouge pas (voir le piège de la pagination).','`include_adult=false`, `language=en-US`, `page=N`.','Environ 1 400 appels pour les 27 années.'],k:['raw_discover','p_pagination','i3']},
+api_movie:{l:'in',t:'/movie/{id}',s:'fiche complète',path:'GET /movie/27205?append_to_response=credits',d:'La fiche complète d’un film : dates, durée, budget, genres, sociétés… et, grâce à `append_to_response=credits`, son casting et son équipe technique dans la même réponse.',p:['Un appel par film : 25 389 appels.','`append_to_response` : un seul aller-retour au lieu de deux.','Inception : 38 Ko, 495 ms, 52 acteurs.'],k:['raw_movies','c_append','i4']},
+raw_discover:{l:'in',t:'discover/',s:'une ligne = une page',path:'data/raw/discover/year=AAAA.jsonl',d:'Les pages de discover, telles que TMDB les a envoyées. C’est la trace de la collecte : la transformation ne s’en sert pas.',p:['Une ligne = une enveloppe : `page`, `results` (20 films résumés), `total_pages`, `total_results`.','Elle fournit les ids à l’appel suivant.','C’est en l’analysant qu’on a découvert les 105 films manqués.'],k:['api_discover','api_movie','p_pagination']},
+raw_movies:{l:'in',t:'movies/',s:'une ligne = un film',path:'data/raw/movies/year=AAAA.jsonl',d:'Le résultat de mon travail : la fiche complète de chaque film, casting compris, sans rien modifier. C’est l’entrée de la transformation.',p:['27 fichiers, de 2000 à 2026.','25 389 films, ~600 Mo, le plus gros fichier (2018) fait 33,9 Mo.','0 doublon, 0 film manquant, 0 erreur.','Versionné dans Git : l’équipe le récupère avec `git pull`.'],k:['api_movie','i8','pq_movies','c_jsonl']},
+/* --- Lignage : transformation --- */
+pq_movies:{l:'tr',t:'movies',s:'25 389 lignes',path:'data/processed/movies/part-NNNN.parquet',d:'Une ligne par film, avec les valeurs simples de la fiche. Clé primaire : `id`.',p:['Colonnes : `id`, `imdb_id`, `title`, `original_title`, `original_language`, `status`, `overview`, `tagline`, `homepage`, `release_date` (date), `runtime`, `budget`, `revenue`, `vote_average`, `vote_count`, `popularity`, `adult`, `collection_id`.','Les 0 « inconnus » de `runtime`, `budget` et `revenue` sont devenus vides.'],k:['raw_movies','sq_movies','t_norm']},
+pq_genres:{l:'tr',t:'genres',s:'19 lignes',path:'data/processed/genres/',d:'Un genre par ligne : `id` et `name`. La liste est reconstruite à partir des fiches, sans appel à `/genre/movie/list`.',p:['« Action » n’est écrit qu’une fois (id 28) : c’est la normalisation.'],k:['raw_movies','sq_genres','t_norm']},
+pq_movie_genres:{l:'tr',t:'movie_genres',s:'60 263 lignes',path:'data/processed/movie_genres/',d:'Une table de liaison : une ligne par couple film-genre. Clé : `(movie_id, genre_id)`.',p:['Inception a 3 lignes : Action, Science Fiction, Crime.','Elle existe parce qu’un film a plusieurs genres et qu’un genre concerne plusieurs films.'],k:['raw_movies','sq_movie_genres','c_liaison']},
+pq_people:{l:'tr',t:'people',s:'674 561 lignes',path:'data/processed/people/',d:'Une personne par ligne, acteurs et techniciens : `id`, `name`, `gender`, `known_for_department`, `popularity`.',p:['DiCaprio n’existe qu’une fois, même s’il joue dans 20 films.','Les doublons sont évités avec un ensemble des ids déjà vus.'],k:['raw_movies','sq_people','t_norm']},
+pq_credits:{l:'tr',t:'credits',s:'1 914 840 lignes',path:'data/processed/credits/',d:'Une ligne par poste d’une personne sur un film. Clé : `credit_id`. La colonne `type` vaut `cast` (acteur) ou `crew` (équipe technique).',p:['`character` et `order` pour les acteurs ; `job` et `department` pour l’équipe.','Nolan a deux lignes sur Inception (Producer, Writer) : c’est pour ça que la clé est `credit_id`.','Tout le casting est gardé pour l’instant, à décider avec Salma.'],k:['raw_movies','sq_credits','p_crew']},
+/* --- Lignage : SQL --- */
+sq_movies:{l:'sq',t:'movies',s:'25 389 lignes',path:'pipeline.movies',d:'La table centrale, chargée depuis le Parquet `movies`. Clé primaire `id`, `title` obligatoire.',p:['Mêmes colonnes et mêmes types que le Parquet (`BIGINT`, `TEXT`, `DATE`, `DOUBLE PRECISION`, `BOOLEAN`).','Les autres tables y renvoient par `movie_id`.'],k:['pq_movies','s_rules','sq_analyses']},
+sq_genres:{l:'sq',t:'genres',s:'19 lignes',path:'pipeline.genres',d:'La table des 19 genres, chargée depuis le Parquet `genres`. Clé primaire `id`.',k:['pq_genres','sq_movie_genres']},
+sq_movie_genres:{l:'sq',t:'movie_genres',s:'60 263 lignes',path:'pipeline.movie_genres',d:'La table de liaison film-genre. Ses deux colonnes sont des clés étrangères vers `movies` et `genres` : la base refuse un id inconnu.',p:['Clé composée `(movie_id, genre_id)` : un film n’a pas deux fois le même genre.','Au chargement, un doublon est ignoré (`DO NOTHING`).'],k:['pq_movie_genres','c_liaison','c_cle']},
+sq_people:{l:'sq',t:'people',s:'674 561 lignes',path:'pipeline.people',d:'La table des personnes, chargée depuis le Parquet `people`. Clé primaire `id`, `name` obligatoire.',k:['pq_people','sq_credits']},
+sq_credits:{l:'sq',t:'credits',s:'1 914 840 lignes',path:'pipeline.credits',d:'La table des rôles et postes, avec des clés étrangères vers `movies` et `people`. Clé primaire `credit_id`.',p:['`CHECK (type IN (\'cast\', \'crew\'))`.','Chargée en dernier : les films et les personnes doivent déjà exister.'],k:['pq_credits','sq_index','c_index']},
+sq_analyses:{l:'sq',t:'5 requêtes',s:'analyses',path:'sql/analyses.sql',d:'Les 5 requêtes d’analyse de Salma, qui couvrent ce que la fiche demande : jointures, `GROUP BY`, CTE et window functions.',p:['Les 10 films aux plus grosses recettes.','Note moyenne par genre (jointure + `GROUP BY`) : Documentary en tête (7,06/10, 1 420 films), puis Animation (6,93/10).','Les 5 films les mieux notés de chaque année (CTE + `ROW_NUMBER`, au moins 100 votes).','Les 10 réalisateurs les plus présents (`job = \'Director\'`) : Takashi Miike (34 films), puis Tyler Perry (31).','Recettes moyennes par année, comparées à l’année précédente (CTE + `LAG`).'],k:['sq_movies','c_window']},
+sq_index:{l:'sq',t:'index',s:'EXPLAIN ANALYZE',path:'sql/benchmark.sql',d:'Salma a mesuré un index sur `credits(job)` pour la requête « tous les réalisateurs ». Résultat : plus lent avec l’index (917 ms) que sans (315 ms).',p:['Sans index : Parallel Seq Scan. Avec : Bitmap Index Scan + Bitmap Heap Scan.','La requête renvoie 28 103 lignes : trop pour qu’un index aide, lire toute la table est plus rapide.','La fiche demande un index justifié. À proposer à Salma : un index plus sélectif, par exemple `credits(person_id)` pour « les films d’un acteur ».'],k:['sq_credits','c_index','r_index']},
+/* --- Lignage : Hub --- */
+hub:{l:'hu',t:'Dataset Hub',s:'privé',path:'NdeyeAidaNdour/tmdb-movies-2000-2026',d:'Le dataset publié par Aida sur Hugging Face, l’équivalent de GitHub pour les données. Il contient les 5 tableaux Parquet et la Dataset Card.',p:['153 fichiers Parquet, ~81 Mo, sous le compte personnel d’Aida.','Privé : visible d’elle seule pour l’instant.','Script : `scripts/publish/publish.py` ; fiche : `scripts/publish/dataset_card.md`.','Pas d’IA ici : on partage les données, c’est tout.'],code:'from datasets import load_dataset\nfilms = load_dataset("NdeyeAidaNdour/tmdb-movies-2000-2026", "movies", revision="v1.0.0")',k:['tag','pq_movies','r_licence']},
+tag:{l:'hu',t:'v1.0.0',s:'version figée',d:'Un tag, comme sur Git : il fige l’état du dataset rendu. Aida l’a relu depuis le Hub : les 5 tableaux ont les mêmes nombres de lignes qu’après la transformation.',p:['Posé avec `publish.py --tag`.'],k:['hub']},
+
+/* --- Ingestion : les 8 stations --- */
+i1:{l:'in',n:1,t:'L’environnement',s:'clé, périmètre, dossiers',path:'scripts/ingest/config.py',d:'Un fichier unique pour les réglages : la clé lue dans `.env`, l’adresse de TMDB, les dossiers et le périmètre. Les deux scripts d’ingestion le lisent.',p:['`YEARS = range(2000, 2027)` : `range` s’arrête juste avant 2027, donc 2000 à 2026.','`MIN_VOTES = 50`, `LANGUAGE = "en-US"`.','La clé reste dans `.env`, ignoré par Git. On n’affiche jamais un secret en entier.'],x:'Pour un essai sur 2 ans, on change `YEARS` ici, et les deux scripts suivent.',k:['c_secret']},
+i2:{l:'in',n:2,t:'Un appel en Python',s:'get_json, get_movie, append_jsonl',path:'scripts/ingest/fetch_sync.py',d:'Faire en code ce qu’on faisait dans Postman. `get_json` est la seule fonction qui parle à TMDB ; `append_jsonl` la seule qui écrit dans les fichiers.',p:['`all_params.update(params or {})` : clé et langue communes, plus les paramètres de l’appel.','`raise_for_status()` arrête le script sur une erreur HTTP.','Mode `"a"` : on ajoute à la fin du fichier, sans effacer.'],code:'def get_json(path, params=None):\n    all_params = {"api_key": config.API_KEY, "language": config.LANGUAGE}\n    all_params.update(params or {})\n    response = requests.get(config.BASE_URL + path, params=all_params, timeout=15)\n    response.raise_for_status()\n    return response.json()',k:['c_api','c_jsonl']},
+i3:{l:'in',n:3,t:'La liste d’une année',s:'discover, mois par mois',d:'Récupérer les ids de tous les films d’une année : pour chacun des 12 mois, on demande la page 1, on lit `total_pages`, puis on demande les pages suivantes.',p:['`month_ranges(year)` fabrique les 12 couples (1er jour, dernier jour).','`get_all_pages` : page 1, puis pages 2 à N, pour un mois.','`get_movie_ids` boucle sur les mois et garde les ids sans doublon.','Résultat sur 2010 : 914 films uniques sur 914, 0 doublon.'],k:['api_discover','p_pagination']},
+i4:{l:'in',n:4,t:'Les fiches des films',s:'fetch_movies',d:'Boucler sur les ids et appeler `get_movie` pour chacun, puis écrire chaque fiche. Un film en erreur est signalé et sauté au lieu de tout arrêter.',p:['`enumerate(ids, start=1)` numérote pour afficher `film 57/914`.','`try` / `except` : on attrape l’erreur HTTP, on compte, on continue.','Première livraison à Aida : un échantillon de 200 films (janvier-mars 2010).'],k:['api_movie','raw_movies']},
+i5:{l:'in',n:5,t:'L’asynchrone',s:'aiohttp, sémaphore',path:'scripts/ingest/fetch_async.py',d:'Pendant qu’une requête attend la réponse (~0,5 s), on en envoie d’autres. Avec 20 requêtes en cours à la fois, on va environ 20 fois plus vite.',p:['`async def` / `await` : une fonction qui se met en pause pendant l’attente réseau.','`asyncio.gather(...)` : lance plusieurs tâches en même temps.','`asyncio.Semaphore(20)` : 20 requêtes au maximum, pour ne pas surcharger TMDB.','Une requête à la fois : plusieurs heures. En asynchrone : quelques minutes.'],k:['c_async','c_semaphore','i6']},
+i6:{l:'in',n:6,t:'Résister aux erreurs',s:'nouvelles tentatives',d:'Si TMDB répond « trop de requêtes » (429) ou a une panne passagère (5xx), ou ne répond pas en 15 s, on réessaie après une attente qui double : 1 s, 2 s, 4 s, 8 s. Cinq essais au maximum.',p:['404 : le film n’existe plus, on renvoie `None`.','401 : la clé est refusée, réessayer ne sert à rien, on s’arrête.','Si TMDB envoie `Retry-After`, on attend au moins ce temps.','Chaque nouvelle tentative s’affiche, pour voir ce qui se passe.'],k:['i5','c_codes']},
+i7:{l:'in',n:7,t:'Reprendre après coupure',s:'checkpoint par année',d:'Pendant la collecte d’une année, les fiches vont dans `year=AAAA.jsonl.part`. Le fichier n’est renommé en `.jsonl` qu’à la toute fin. Si le `.jsonl` existe, l’année est finie et on la saute.',p:['Après un Ctrl+C, on relance : les années finies sont sautées, l’année interrompue est refaite.','Les `.part` sont ignorés par Git : on ne commite jamais une année incomplète.'],k:['c_checkpoint']},
+i8:{l:'in',n:8,t:'Tout le périmètre',s:'2000 → 2026',d:'La collecte complète, lancée en partage de connexion : 27 années, 25 389 films, sans doublon, sans film manquant, sans erreur.',p:['Chaque année vérifiée : fiches = ids de discover, toutes avec `credits`, 0 film sous 50 votes, 0 mauvaise année.','~600 Mo de JSON, commités et poussés sur `main`.','On voit la chute de 2020 (Covid) et l’année 2026 incomplète.'],k:['raw_movies','p_proxy']},
+
+/* --- Transformation : notions --- */
+t_norm:{l:'tr',t:'Normalisation',s:'chaque info à un seul endroit',d:'Découper les données en tables pour que chaque information n’existe qu’une fois, et relier les tables par des ids.',p:['Dans mes JSON, « Leonardo DiCaprio » est répété dans chaque film : c’est dénormalisé.','Après : il est une fois dans `people`, et `credits` renvoie à lui par son id.','Les tables de liaison (`movie_genres`, `credits`) gèrent les relations « plusieurs à plusieurs ».'],k:['c_liaison','pq_people','c_cle']},
+t_clean:{l:'tr',t:'Nettoyage',s:'les pièges corrigés',d:'Corriger ce qui fausserait les analyses, avec une petite fonction par piège.',p:['`zero_to_none` : un 0 « inconnu » devient vide.','`clean_text` : un texte vide devient vide (NULL).','`clean_date` : `"2010-07-15"` devient une vraie date.','Un film déjà vu est ignoré ; une personne n’est écrite qu’une fois.'],k:['p_zero','t_type']},
+t_type:{l:'tr',t:'Typage',s:'un schéma par tableau',d:'Chaque colonne a un nom et un type fixés à l’avance avec pyarrow : entier, texte, date, décimal, booléen. C’est aussi ce qui prépare les types SQL.',code:'("id", pa.int64()),\n("title", pa.string()),\n("release_date", pa.date32()),\n("vote_average", pa.float64()),',k:['t_tools','sq_movies']},
+t_batch:{l:'tr',t:'Par lots',s:'1 000 films à la fois',d:'Le script lit les fichiers ligne par ligne et traite 1 000 films à la fois, sans tout charger en mémoire. C’est une exigence de la fiche.',p:['~400 Mo de RAM au maximum pour 589 Mo de JSON.','~33 s pour les 25 389 films.','Un fichier `part-NNNN.parquet` par lot : c’est normal en Parquet.'],k:['c_batch']},
+t_tools:{l:'tr',t:'Les outils',s:'json, datetime, pyarrow, pytest',d:'Peu d’outils : `json` pour lire les lignes, `datetime` pour les dates, `pyarrow` pour les schémas et l’écriture Parquet, `pytest` pour les tests (8 tests).',p:['pyarrow est une bibliothèque Python (projet Apache Arrow).','pandas aurait aussi écrit du Parquet (il utilise pyarrow en coulisses), mais il pousse à tout charger en mémoire.','Un script = une étape, qu’on relance quand on veut.'],code:'table = pa.Table.from_pylist(rows, schema=SCHEMAS["movies"])\npq.write_table(table, "part-0001.parquet")',k:['t_type','c_parquet']},
+t_parquet:{l:'tr',t:'Parquet',s:'589 Mo → 81 Mo',d:'Un format de tableau compact, rangé colonne par colonne, qui garde les types. C’est le point de passage commun vers la base SQL et vers le Hub.',p:['On peut l’interroger directement en SQL avec DuckDB.','Il ne vérifie aucune règle : c’est le rôle de PostgreSQL.'],code:'import duckdb\nduckdb.sql("SELECT COUNT(*) FROM \'data/processed/movies/*.parquet\'").show()',k:['c_parquet','sq_movies','hub']},
+
+/* --- Base SQL : les étapes --- */
+s_setup:{l:'sq',t:'Préparer la base',s:'à la main, une fois',d:'Avant le chargement, deux étapes manuelles : créer la base `movie_analytics`, puis exécuter `sql/schema.sql` pour créer les tables vides. Elles ne sont documentées nulle part dans le dépôt.',p:['PostgreSQL local de Salma : `localhost`, port `5433`, utilisateur `postgres`.','Avec pgAdmin (ouvrir le fichier, Exécuter) ou avec `psql`.','Sans ça, le chargement s’arrête sur « Table cible introuvable ».','À demander à Salma : une section « ③ Base SQL » dans le README.'],code:'psql -h localhost -p 5433 -U postgres -c "CREATE DATABASE movie_analytics;"\npsql -h localhost -p 5433 -U postgres -d movie_analytics -f sql/schema.sql',k:['s_schema','r_setup','c_schema']},
+s_schema:{l:'sq',t:'schema.sql',s:'le plan des tables',path:'sql/schema.sql',d:'Le fichier qui décrit la base : les 5 tables, leurs colonnes, leurs types et leurs règles. Il ne contient aucune donnée.',p:['`CREATE SCHEMA pipeline` : un groupe de tables dans la base `movie_analytics`. Nom complet d’une table : `pipeline.movies`.','`SET search_path TO pipeline, public` : un nom sans schéma est cherché d’abord dans `pipeline`. Donc `CREATE TABLE movies` crée `pipeline.movies`.','Les 5 tables reprennent exactement les 5 tableaux Parquet d’Aida, colonne pour colonne.'],x:'Serveur PostgreSQL → base `movie_analytics` → schéma `pipeline` → tables `movies`, `genres`, `movie_genres`, `people`, `credits`.',k:['s_rules','c_schema','c_search_path']},
+s_rules:{l:'sq',t:'Les règles',s:'ce que la base refuse',d:'Ce qui distingue la base d’un fichier Parquet : PostgreSQL vérifie chaque ligne insérée et refuse celles qui ne respectent pas les règles.',p:['`PRIMARY KEY` : obligatoire et unique (deux films ne peuvent pas avoir le même `id`).','`NOT NULL` : la colonne doit être remplie (un film sans `title` est refusé).','`REFERENCES movies(id)` : clé étrangère, le `movie_id` d’un crédit doit exister dans `movies`.','`CHECK (type IN (\'cast\', \'crew\'))` : `type` ne peut valoir que ces deux mots.','`movie_genres` : clé composée `(movie_id, genre_id)`, c’est le couple qui est unique.','`"order"` entre guillemets : `ORDER` est un mot réservé du SQL.'],k:['c_cle','s_load']},
+s_load:{l:'sq',t:'Le chargement',s:'2 675 072 lignes',path:'scripts/load/load_all_parquet.py',d:'Le script Python qui remplit les tables avec les Parquet d’Aida, par paquets de 5 000 lignes. Relançable sans doublons : vérifié sur deux exécutions.',p:['`getpass` demande le mot de passe sans l’afficher : il n’est écrit nulle part.','Ordre `genres`, `movies`, `people`, `movie_genres`, `credits` : les tables parents d’abord, à cause des clés étrangères.','Une connexion, donc une transaction, par table : si `credits` plante, les 4 autres restent chargées.','Réglages de connexion écrits en dur (`localhost`, `5433`, `postgres`), alors que `.env.example` prévoit `DATABASE_URL`.'],code:'for name in TABLES:\n    with psycopg.connect(host="localhost", port=5433,\n                         dbname="movie_analytics", user="postgres",\n                         password=password) as conn:\n        load_table(conn, name)',k:['s_columns','s_staging','c_with','c_transaction']},
+s_columns:{l:'sq',t:'Lire les colonnes',s:'le catalogue',d:'Le script ne recopie pas la liste des colonnes à la main : il la demande à PostgreSQL, dans ses tables internes (le catalogue). Si le schéma change, le script suit.',p:['`pg_namespace` : les schémas ; `pg_class` : les tables ; `pg_attribute` : les colonnes.','Deux `JOIN` relient colonne → table → schéma, puis on filtre sur `pipeline` et la table voulue.','`attnum > 0` écarte les colonnes cachées ; `NOT attisdropped`, les colonnes supprimées.','Les tables existent déjà (vides) : `schema.sql` a été lancé avant.'],x:'Pour `movies`, le résultat devient en Python : `columns = ["id", "imdb_id", "title", ...]`.',k:['c_catalogue','s_staging']},
+s_staging:{l:'sq',t:'Transit + upsert',s:'COPY puis ON CONFLICT',d:'Pour chaque paquet de 5 000 lignes : on vide une table temporaire, on y verse le paquet avec `COPY`, puis une seule commande le fusionne dans la vraie table.',p:['`CREATE TEMP TABLE stage_load (LIKE pipeline.movies EXCLUDING ALL) ON COMMIT DROP` : mêmes colonnes, aucune règle, supprimée à la fin.','`COPY` : l’insertion en masse, très rapide, mais il ne gère pas les doublons.','`INSERT … ON CONFLICT (id) DO UPDATE SET …` : un film déjà présent est mis à jour au lieu d’être doublé.','`movie_genres` n’a que sa clé : `DO NOTHING`.','`{}` reçoit un nom (avec `.format` et `sql.Identifier`), `%s` reçoit une valeur (2e argument de `execute`).'],code:'TRUNCATE stage_load\nCOPY stage_load (...) FROM STDIN\nINSERT INTO pipeline.movies (...)\nSELECT ... FROM stage_load WHERE true\nON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, ...',k:['c_staging','c_copy','c_upsert']},
+s_queries:{l:'sq',t:'Les analyses',s:'5 requêtes',path:'sql/analyses.sql',d:'Les 5 requêtes demandées par la fiche : jointures, `GROUP BY`, CTE et window functions.',k:['sq_analyses']},
+s_bench:{l:'sq',t:'L’index',s:'plus lent avec',path:'sql/benchmark.sql',d:'Un index sur `credits(job)`, mesuré avec `EXPLAIN ANALYZE` : la requête est plus lente avec l’index qu’avant.',k:['sq_index']},
+
+/* --- Pièges --- */
+p_pagination:{l:'pi',t:'Les pages qui bougent',s:'810 films sur 915',d:'Chaque page est une requête séparée, et le serveur ne se souvient de rien : à chaque page, il refait filtre, tri et découpe. Avec un tri par popularité, l’ordre changeait entre deux pages.',p:['Un film qui descend apparaît deux fois (doublon) ; celui qui monte passe entre deux pages (manqué).','Mesuré sur 2010 : 810 films uniques sur 915, soit 105 manqués (11,5 %).'],o:'Trier par date de sortie (un ordre qui ne bouge pas) et chercher mois par mois : 914 sur 914, 0 doublon.',k:['api_discover','i3']},
+p_zero:{l:'pi',t:'Les 0 qui mentent',s:'56 % des budgets',d:'`budget`, `revenue` et `runtime` valent 0 quand ils sont inconnus. Laissés tels quels, ils fausseraient les moyennes.',p:['Sur l’échantillon de 200 films : budget à 0 pour 113 films (56 %), recettes à 0 pour 111.'],o:'La transformation les remplace par des cases vides (NULL).',k:['t_clean']},
+p_crew:{l:'pi',t:'Une personne, plusieurs postes',s:'Nolan ×2',d:'Dans `credits.crew`, Christopher Nolan apparaît comme `Producer` et comme `Writer` sur Inception, avec deux `credit_id` différents.',p:['Le couple film + personne n’est donc pas unique.','`known_for_department` est la spécialité habituelle, pas le poste sur ce film.'],o:'Clé `credit_id` dans la table `credits`. Pour trouver les réalisateurs, filtrer sur `job = "Director"`.',k:['pq_credits']},
+p_proxy:{l:'pi',t:'Le réseau du travail',s:'timeouts',d:'Sur le wifi du travail, aucune connexion directe vers TMDB ne passe : `requests` et `aiohttp` échouaient tous les deux. Le code n’était pas en cause.',p:['Diagnostic : le même appel fait de trois façons, avec le temps et l’erreur exacte.','`aiohttp` ne lit pas le proxy tout seul : `trust_env=True` corrige ça.'],o:'Lancer l’ingestion hors du réseau d’entreprise (partage de connexion), ou définir `HTTPS_PROXY` dans le terminal.',k:['i8']},
+p_append:{l:'pi',t:'Les essais qui s’empilent',s:'mode "a"',d:'Le mode `"a"` ajoute à la fin du fichier. Chaque lancement de test ajoutait donc ses lignes à celles du précédent.',o:'Repartir de zéro à chaque lancement (`unlink`), puis le checkpoint par année avec le fichier `.part`.',k:['i7','i2']},
+p_silence:{l:'pi',t:'Le script qui semble figé',s:'Ctrl+C trop tôt',d:'Un script qui travaille sans rien afficher ressemble à un script bloqué. J’ai interrompu discover à la page 39 sur 46.',o:'Afficher la progression : `page 12/46`, `film 57/914`, une ligne par mois, une ligne par nouvelle tentative.',k:['i4']},
+
+/* --- Reste à faire --- */
+r_tests:{l:'in',t:'Tests pytest de l’ingestion',s:'Yannis',d:'La dernière exigence de la fiche pour l’ingestion. Les tests vérifient le code sans appeler TMDB, avec de fausses réponses.',p:['Découpage en mois, février bissextile compris.','Nouvelles tentatives : 429 puis 200, 404, 401, abandon après 5 essais.','Reprise : le `.part` et une année finie qui est sautée.'],k:['i3','i6','i7']},
+r_sql:{l:'sq',t:'Base SQL',s:'Salma',d:'Schéma avec clés et contraintes, chargement relançable sans doublons (2 675 072 lignes), 5 requêtes d’analyse, un test d’index avec `EXPLAIN ANALYZE`.',k:['s_schema','s_load','sq_analyses','sq_index']},
+r_index:{l:'sq',t:'Justifier l’index',s:'Salma',d:'L’index sur `credits(job)` ralentit la requête (315 ms → 917 ms). La fiche demande un index justifié : en tester un plus sélectif, par exemple `credits(person_id)`.',k:['sq_index']},
+r_setup:{l:'sq',t:'Documenter la mise en place',s:'Salma',d:'Rien n’explique comment créer la base et lancer `schema.sql` avant le chargement. À ajouter au README, avec les commandes réellement utilisées.',p:['Le README indique encore « À venir » pour l’étape ③.','Option : lancer `schema.sql` depuis le script, avec `CREATE TABLE IF NOT EXISTS` pour pouvoir relancer.','Option : lire les réglages de connexion dans `.env` au lieu de les écrire en dur.'],k:['s_setup']},
+r_airflow:{l:'co',t:'Idée bonus : Airflow',s:'Yannis',d:'Orchestrer les 4 étapes avec Airflow sur le VPS de Yannis. Pas demandé par la fiche, à faire une fois l’essentiel fini.',p:['Gratuit et open source ; `docker-compose.yaml` officiel, sur Docker Engine (Linux).','Pourquoi le VPS : Docker Desktop payant dans les grandes entreprises, proxy du travail, machine toujours allumée.','À prévoir : 4 Go de RAM libres, port 8080 jamais exposé (reverse proxy HTTPS ou tunnel SSH), compte par défaut changé, secrets dans `.env`.','Interface perso possible via l’API REST d’Airflow, par exemple ce plan coloré selon l’état réel des étapes.'],k:['c_orchestrateur']},
+r_licence:{l:'hu',t:'Licence et passage en public',s:'équipe',d:'Les conditions de TMDB sont non commerciales, non transférables et non sous-licenciables. Publier le dataset en public est à clarifier avant de le faire.',p:['Aujourd’hui : dataset privé, sous le compte d’Aida (peut passer dans une organisation).'],k:['hub']},
+r_crew:{l:'tr',t:'Garder tout le crew ?',s:'Aida et Salma',d:'Le casting complet fait 1,9 million de lignes. On peut ne garder que certains postes (par exemple `Director`) si les analyses n’ont pas besoin du reste.',k:['pq_credits']},
+r_questions:{l:'sq',t:'Choisir les questions d’analyse',s:'équipe',d:'Les questions décident des données utiles. Choisies par Salma : les 5 requêtes de `sql/analyses.sql`.',k:['sq_analyses']},
+
+/* --- Lexique --- */
+c_api:{l:'co',t:'API',d:'Une adresse web faite pour les programmes : on envoie une requête, elle répond en JSON. Le chemin désigne la chose demandée, les paramètres après le `?` règlent la réponse.',x:'`/movie/27205?language=en-US` : le film 27205, en anglais.',k:['api_movie','c_codes']},
+c_codes:{l:'co',t:'Codes de réponse',d:'Le chiffre que renvoie le serveur : `200` tout va bien, `401` clé refusée, `404` introuvable, `429` trop de requêtes, `5xx` panne côté serveur.',k:['i6']},
+c_append:{l:'co',t:'append_to_response',d:'Un paramètre propre à TMDB qui ajoute des informations dans la même réponse. Un seul appel au lieu de deux. Le serveur ne garde rien en mémoire : il en fait juste plus pour cette requête.',k:['api_movie']},
+c_jsonl:{l:'co',t:'JSON Lines',d:'Un fichier texte avec un objet JSON complet par ligne. On ajoute à la fin sans tout réécrire, une ligne coupée n’abîme pas les autres, et on lit ligne par ligne.',k:['raw_movies']},
+c_async:{l:'co',t:'Asynchrone',d:'Lancer plusieurs requêtes sans attendre la fin de chacune : on profite du temps d’attente réseau pour avancer sur les autres.',k:['i5']},
+c_semaphore:{l:'co',t:'Sémaphore',d:'Un compteur de places : `Semaphore(20)` laisse passer 20 requêtes à la fois, la 21e attend qu’une place se libère.',k:['i5']},
+c_checkpoint:{l:'co',t:'Checkpoint',d:'La trace de ce qui est déjà fait, pour reprendre après une coupure au lieu de tout recommencer. Ici : un fichier `.jsonl` par année terminée.',k:['i7']},
+c_secret:{l:'co',t:'Secret et .env',d:'Une clé API est un mot de passe. Elle va dans `.env`, ignoré par Git, et le code la lit avec `load_dotenv`.',k:['i1']},
+c_parquet:{l:'co',t:'Parquet',d:'Un format de fichier pour les tableaux, rangé par colonnes, compact et typé. Il ne s’ouvre pas dans un éditeur de texte.',k:['t_parquet']},
+c_batch:{l:'co',t:'Traitement par lots',d:'Lire et traiter les données par petits paquets pour ne pas saturer la mémoire.',k:['t_batch']},
+c_cle:{l:'co',t:'Clé primaire et étrangère',d:'La clé primaire identifie une ligne de façon unique (`id` dans `movies`). Une clé étrangère renvoie vers une ligne d’une autre table (`movie_id` dans `credits`).',k:['t_norm','sq_movie_genres']},
+c_liaison:{l:'co',t:'Table de liaison',d:'Une table pont entre deux tables, quand chaque côté peut avoir plusieurs liens : un film a plusieurs genres, un genre a plusieurs films.',k:['pq_movie_genres','sq_credits']},
+c_upsert:{l:'co',t:'Upsert',d:'Ajouter une ligne, ou la mettre à jour si elle existe déjà. Permet de relancer un chargement sans créer de doublons.',k:['r_sql']},
+c_index:{l:'co',t:'Index',d:'Comme le sommaire d’un livre : il évite à la base de parcourir toute la table. On mesure son gain avec `EXPLAIN ANALYZE`.',k:['sq_index']},
+c_window:{l:'co',t:'Window function',d:'Un calcul SQL qui compare une ligne à ses voisines tout en gardant chaque ligne, par exemple un rang par année avec `ROW_NUMBER() OVER (PARTITION BY ...)`.',k:['sq_analyses']},
+c_schema:{l:'co',t:'Schéma (PostgreSQL)',d:'Un groupe de tables nommé, à l’intérieur d’une base. Nom complet d’une table : `schéma.table`, par exemple `pipeline.movies`.',x:'Serveur → base `movie_analytics` → schéma `pipeline` → table `movies`.',k:['s_schema']},
+c_search_path:{l:'co',t:'search_path',d:'La liste des schémas où PostgreSQL cherche une table dont on n’a pas précisé le schéma, dans l’ordre. Valable seulement pour la session en cours.',x:'Avec `SET search_path TO pipeline, public`, `SELECT * FROM movies` lit `pipeline.movies`.',k:['s_schema']},
+c_catalogue:{l:'co',t:'Catalogue',d:'Les tables internes où PostgreSQL décrit sa propre structure : schémas, tables, colonnes. Elles existent dès la création de la base et s’interrogent en SQL.',k:['s_columns']},
+c_staging:{l:'co',t:'Table de transit (staging)',d:'Une table temporaire, sans règles, où l’on verse les données en vrac avant de les fusionner dans la vraie table.',k:['s_staging']},
+c_copy:{l:'co',t:'COPY',d:'La commande PostgreSQL d’insertion en masse : bien plus rapide que des milliers d’`INSERT` séparés.',k:['s_staging']},
+c_transaction:{l:'co',t:'Transaction, commit, rollback',d:'Un groupe d’écritures validé en entier (`commit`) ou annulé en entier (`rollback`). Rien n’est à moitié fait.',k:['s_load','c_with']},
+c_with:{l:'co',t:'with (Python)',d:'Ouvre une ressource et garantit qu’elle sera refermée à la fin du bloc, même en cas d’erreur. Comme `try / finally` : il n’attrape pas l’erreur, elle remonte quand même.',p:['`try / except` décide quoi faire de l’erreur (le script continue).','`with` s’occupe de la ressource ouverte (fermer, valider ou annuler).','Connexion psycopg : `commit` si tout va bien, `rollback` en cas d’erreur, puis fermeture.'],code:'with open(chemin, "a") as f:\n    f.write(ligne)\n# ici, f est fermé, erreur ou pas',k:['c_transaction','s_load']},
+c_etl:{l:'co',t:'ETL et ELT',d:'ETL : on transforme avant de charger dans la base (notre cas). ELT : on charge le brut, puis on transforme en SQL dans la base.',k:['c_orchestrateur']},
+c_orchestrateur:{l:'co',t:'Orchestrateur',d:'Un outil qui lance les étapes du pipeline dans l’ordre, à heure fixe, relance en cas d’échec et garde l’historique. Chaque étape reste une commande indépendante.',p:['Airflow (gratuit, open source), Dagster, Prefect.','En simple : un script qui appelle les 4 commandes, et une tâche planifiée.'],k:['r_airflow','c_etl']},
+c_de:{l:'co',t:'Data engineering',d:'Le métier qui construit le tuyau amenant des données propres et fiables. Ce que d’autres en font ensuite (analyses, IA) vient après.',k:['hub']}
+};
+const BY=IT;
+
+/* --- Outils --- */
+const $=q=>document.querySelector(q);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmt=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>');
+const vars=l=>{const c=LINES[l].c;return`--c:var(--l${c});--on:var(--on${c})`};
+const badge=l=>`<span class="bd" style="${vars(l)}">${LINES[l].n}</span>`;
+const norm=s=>s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();
+
+/* --- Plan (lignage) --- */
+const COLS=[[90,'API TMDB','themoviedb.org'],[285,'JSON Lines','data/raw/'],[490,'Parquet','data/processed/'],[700,'PostgreSQL','schéma pipeline'],[900,'Résultats','']];
+const Y=[96,186,276,366,456];
+const NODES={api_discover:[90,140],api_movie:[90,366],raw_discover:[285,140],raw_movies:[285,366],
+ pq_movies:[490,Y[0]],pq_genres:[490,Y[1]],pq_movie_genres:[490,Y[2]],pq_people:[490,Y[3]],pq_credits:[490,Y[4]],
+ sq_movies:[700,Y[0]],sq_genres:[700,Y[1]],sq_movie_genres:[700,Y[2]],sq_people:[700,Y[3]],sq_credits:[700,Y[4]],
+ sq_analyses:[900,Y[1]],sq_index:[900,Y[4]],hub:[700,566],tag:[900,566]};
+const EDGES=[['api_discover','raw_discover'],['raw_discover','api_movie','ids'],['api_movie','raw_movies'],
+ ...['pq_movies','pq_genres','pq_movie_genres','pq_people','pq_credits'].map(p=>['raw_movies',p]),
+ ...['movies','genres','movie_genres','people','credits'].map(t=>['pq_'+t,'sq_'+t]),
+ ...['sq_movies','sq_genres','sq_movie_genres','sq_people','sq_credits'].map(s=>[s,'sq_analyses']),
+ ['sq_credits','sq_index'],['pq_movies','hub'],['pq_credits','hub'],['pq_genres','hub'],['pq_people','hub'],['pq_movie_genres','hub'],['hub','tag']];
+const up=id=>EDGES.filter(e=>e[1]===id).map(e=>e[0]);
+const down=id=>EDGES.filter(e=>e[0]===id).map(e=>e[1]);
+function walk(id,f){const seen=new Set(),q=[id];while(q.length)for(const n of f(q.shift()))if(!seen.has(n)){seen.add(n);q.push(n)}return seen}
+
+function buildMap(){let h='';
+ COLS.forEach(([x,t,s])=>{h+=`<rect class="colbg" x="${x-90}" y="10" width="180" height="${x===700||x===900?505:505}" rx="12" opacity=".55"/><text class="colt" x="${x}" y="32">${t}</text>${s?`<text class="cols" x="${x}" y="48">${s}</text>`:''}`});
+ h+=`<rect class="colbg" x="610" y="524" width="380" height="96" rx="12" opacity=".55"/><text class="colt" x="800" y="546">Hugging Face Hub</text>`;
+ EDGES.forEach(([a,b,k],i)=>{const[p,q]=[NODES[a],NODES[b]],l=IT[b].l,todo=IT[b].todo;let d;
+  if(k==='ids'){d=`M${p[0]} ${p[1]+16}C${p[0]} ${p[1]+110} ${q[0]} ${q[1]-110} ${q[0]} ${q[1]-16}`}
+  else if(q[1]===566&&p[1]!==566){const x1=p[0]+14;d=`M${x1} ${p[1]}C${x1+70} ${p[1]} ${q[0]-70} ${q[1]} ${q[0]-14} ${q[1]}`}
+  else{const m=(p[0]+q[0])/2;d=`M${p[0]} ${p[1]}C${m} ${p[1]} ${m} ${q[1]} ${q[0]} ${q[1]}`}
+  h+=`<path class="ed${k==='ids'?' dash':''}${todo?' todo':''}" data-e="${i}" style="${vars(k==='ids'?'in':l)}" d="${d}"/>`;
+  if(k==='ids')h+=`<text class="edl" x="${(p[0]+q[0])/2+22}" y="${(p[1]+q[1])/2}">les ids</text>`});
+ for(const id in NODES){const[x,y]=NODES[id],s=IT[id];
+  h+=`<g class="st${s.todo?' todo':''}" data-id="${id}" tabindex="0" role="button" aria-label="${esc(s.t)}" style="${vars(s.l)}"><circle class="hit" cx="${x}" cy="${y+10}" r="34"/><circle class="dot" cx="${x}" cy="${y}" r="11"/><text class="lab" x="${x}" y="${y+30}">${esc(s.t)}</text><text class="sub" x="${x}" y="${y+45}">${esc(s.s)}</text></g>`}
+ $('#map').innerHTML=h}
+const name=id=>`<code>${esc(IT[id].t)}</code>`;
+function trace(id){const m=$('#map'),ro=$('#readout');m.querySelectorAll('.lit').forEach(e=>e.classList.remove('lit'));
+ if(!id){m.classList.remove('focus');ro.textContent='Survole une station pour suivre d’où viennent ses données et ce qu’elles alimentent.';return}
+ const u=walk(id,up),d=walk(id,down),all=new Set([...u,...d,id]);m.classList.add('focus');
+ m.querySelectorAll('.st').forEach(g=>{if(all.has(g.dataset.id))g.classList.add('lit')});
+ EDGES.forEach(([a,b],i)=>{if((all.has(a)&&all.has(b))&&((u.has(a)&&(u.has(b)||b===id))||(d.has(b)&&(d.has(a)||a===id))))m.querySelector(`[data-e="${i}"]`).classList.add('lit')});
+ ro.innerHTML=name(id)+(u.size?' vient de '+[...u].map(name).join(', '):' est le point de départ')+'. '+(d.size?'Il alimente '+[...d].map(name).join(', ')+'.':'Rien ne dépend de lui.')}
+let pinned=null;
+function bindMap(){const m=$('#map');
+ m.addEventListener('mouseover',e=>{const g=e.target.closest('.st');if(g)trace(g.dataset.id)});
+ m.addEventListener('focusin',e=>{const g=e.target.closest('.st');if(g)trace(g.dataset.id)});
+ m.addEventListener('mouseleave',()=>pinned?litLine(pinned):trace(null));
+ m.addEventListener('click',e=>{const g=e.target.closest('.st');if(g)open(g.dataset.id)});
+ m.addEventListener('keydown',e=>{const g=e.target.closest('.st');if(g&&(e.key==='Enter'||e.key===' ')){e.preventDefault();open(g.dataset.id)}})}
+function litLine(l){const m=$('#map');m.querySelectorAll('.lit').forEach(e=>e.classList.remove('lit'));if(!l){m.classList.remove('focus');return}
+ m.classList.add('focus');m.querySelectorAll('.st').forEach(g=>{if(IT[g.dataset.id].l===l)g.classList.add('lit')});
+ EDGES.forEach(([a,b],i)=>{if(IT[b].l===l)m.querySelector(`[data-e="${i}"]`).classList.add('lit')})}
+function buildPills(){const box=$('#pills');box.innerHTML=['in','tr','sq','hu'].map(l=>`<button class="pill" data-l="${l}" aria-pressed="false" style="${vars(l)}"><span class="bd">${LINES[l].n}</span>${LINES[l].name} <small>${LINES[l].who}</small></button>`).join('');
+ box.addEventListener('click',e=>{const b=e.target.closest('.pill');if(!b)return;pinned=pinned===b.dataset.l?null:b.dataset.l;
+  box.querySelectorAll('.pill').forEach(x=>x.setAttribute('aria-pressed',String(x.dataset.l===pinned)));litLine(pinned);$('#plan').scrollIntoView()})}
+
+/* --- Chiffres --- */
+const STATS=[['in','25 389','films de 2000 à 2026, tous avec leur casting','raw_movies'],['pi','914 / 914','films de 2010 après correction, contre 810 sur 915 avant','p_pagination'],['in','0','doublon, film manquant ou erreur sur les 27 années','i8'],['tr','81 Mo','de Parquet, pour 589 Mo de JSON bruts','t_parquet'],['tr','1,9 M','lignes dans credits (cast + crew)','pq_credits'],['tr','33 s','pour transformer tout, ~400 Mo de RAM','t_batch'],['sq','2,7 M','lignes chargées dans PostgreSQL (2 675 072), comme dans les Parquet','s_load']];
+function buildStats(){$('#stats').innerHTML=STATS.map(([l,v,t,id])=>`<button class="stat" data-open="${id}" style="${vars(l)}"><b>${v}</b><span>${t}</span></button>`).join('')}
+const YEARS=[[2000,422],[2001,479],[2002,496],[2003,540],[2004,598],[2005,619],[2006,782],[2007,770],[2008,845],[2009,916],[2010,914],[2011,972],[2012,1000],[2013,1132],[2014,1230],[2015,1281],[2016,1356],[2017,1427],[2018,1452],[2019,1431],[2020,1107],[2021,1144],[2022,1199],[2023,1109],[2024,957],[2025,787],[2026,424]];
+function buildChart(){const W=900,H=280,m={l:44,r:10,t:26,b:30},w=W-m.l-m.r,h=H-m.t-m.b,ym=1600,n=YEARS.length,step=w/n,bw=step-6;
+ const y=v=>m.t+h-v/ym*h;let g=`<defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="var(--sunken)"/><rect width="3" height="6" fill="var(--l1)"/></pattern></defs>`;
+ for(let v=0;v<=ym;v+=400)g+=`<line x1="${m.l}" x2="${W-m.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--rule)" stroke-width="${v?1:1.5}"/><text x="${m.l-8}" y="${y(v)+4}" text-anchor="end">${v.toLocaleString('fr-FR')}</text>`;
+ YEARS.forEach(([yr,v],i)=>{const x=m.l+i*step+3,top=y(v),r=4;
+  g+=`<path class="bar${yr===2026?' part':''}" data-i="${i}" d="M${x} ${y(0)}V${top+r}Q${x} ${top} ${x+r} ${top}H${x+bw-r}Q${x+bw} ${top} ${x+bw} ${top+r}V${y(0)}Z"/>`;
+  if(i%2===0||yr===2026)g+=`<text x="${x+bw/2}" y="${H-10}" text-anchor="middle">${yr}</text>`;
+  g+=`<rect class="hb" data-i="${i}" x="${x-3}" y="${m.t}" width="${step}" height="${h}"/>`});
+ const ann=(i,txt)=>{const x=m.l+i*step+3+bw/2;g+=`<text class="ann" x="${x}" y="${y(YEARS[i][1])-8}" text-anchor="middle">${txt}</text>`};
+ ann(18,'1 452 (max)');ann(20,'Covid');{const x=m.l+27*step;g+=`<text class="ann" x="${x}" y="${y(1000)}" text-anchor="end">2026 en cours</text>`}
+ $('#chart').innerHTML=g;
+ const tip=$('#tip'),box=$('.chartbox');
+ $('#chart').addEventListener('mousemove',e=>{const r=e.target.closest('.hb');document.querySelectorAll('#chart .bar').forEach(b=>b.classList.toggle('hot',r&&b.dataset.i===r.dataset.i));
+  if(!r){tip.hidden=true;return}const[yr,v]=YEARS[+r.dataset.i],bb=box.getBoundingClientRect();tip.hidden=false;tip.textContent=`${yr} : ${v.toLocaleString('fr-FR')} films${yr===2026?' (année en cours)':''}`;tip.style.left=(e.clientX-bb.left)+'px';tip.style.top=(e.clientY-bb.top)+'px'});
+ $('#chart').addEventListener('mouseleave',()=>{tip.hidden=true;document.querySelectorAll('#chart .bar').forEach(b=>b.classList.remove('hot'))});
+ $('#ctable').innerHTML='<tr><th>Année</th><th>Films</th></tr>'+YEARS.map(([a,v])=>`<tr><td>${a}</td><td>${v.toLocaleString('fr-FR')}</td></tr>`).join('')}
+
+/* --- Sections de cartes --- */
+const card=id=>{const s=IT[id];return`<button class="card" data-open="${id}" style="${vars(s.l)}"><span class="tag">${esc(s.s||LINES[s.l].name)}</span><b>${esc(s.t)}</b><span class="d">${fmt(s.d.split(/(?<=\.) /)[0])}</span><span class="more">Détails →</span></button>`};
+function buildSections(){
+ $('#vline').innerHTML=['i1','i2','i3','i4','i5','i6','i7','i8'].map(id=>{const s=IT[id];return`<button class="vst" data-open="${id}" data-n="${s.n}"><b>${esc(s.t)}</b><span>${fmt(s.d.split(/(?<=\.) /)[0])}</span>${s.path?`<span class="path">${esc(s.path)}</span>`:''}</button>`}).join('');
+ $('#tcards').innerHTML=['t_norm','t_clean','t_type','t_batch','t_tools','t_parquet'].map(card).join('');
+ $('#tables').innerHTML=['pq_movies','pq_genres','pq_movie_genres','pq_people','pq_credits'].map(id=>`<button class="mini${/genres_|credits/.test(id)&&id!=='pq_genres'?' bridge':''}" data-open="${id}" style="${vars('tr')}"><b>${esc(IT[id].t)}</b><span>${esc(IT[id].s)}</span></button>`).join('');
+ $('#scards').innerHTML=['s_setup','s_schema','s_rules','s_load','s_columns','s_staging','s_queries','s_bench'].map(card).join('');
+ $('#pcards').innerHTML=['p_pagination','p_zero','p_crew','p_proxy','p_append','p_silence'].map(card).join('');
+ const T=[['r_tests','go','En cours'],['r_index','wait','À signaler'],['r_setup','wait','À signaler'],['r_crew','wait','À décider'],['r_licence','wait','À décider'],['r_airflow','wait','Bonus']];
+ const D=[['raw_movies','ok','Fait'],['pq_movies','ok','Fait'],['r_sql','ok','Fait'],['hub','ok','Fait']];
+ $('#todo').innerHTML=[...D.map(([id,c,t])=>[id,c,t,LINES[IT[id].l].name+' · '+LINES[IT[id].l].who]),...T.map(([id,c,t])=>[id,c,t,IT[id].s])].map(([id,c,t,who])=>`<button data-open="${id}"><span class="who">${esc(who.split(' · ').pop())}</span><span class="what">${esc(id==='raw_movies'?'Ingestion : 25 389 films collectés':id==='pq_movies'?'Transformation : 5 tableaux Parquet, 8 tests':id==='hub'?'Publication : dataset privé, tag v1.0.0':id==='r_sql'?'Base SQL : 5 tables, 2 675 072 lignes, 5 analyses':IT[id].t)}<small>${fmt(IT[id].d.split(/(?<=\.) /)[0])}</small></span><span class="state ${c}">${t}</span></button>`).join('');
+ $('#lex').innerHTML=Object.keys(IT).filter(id=>IT[id].l==='co'&&id.startsWith('c_')).map(id=>`<button data-open="${id}" style="${vars('co')}"><b><i></i>${esc(IT[id].t)}</b><span>${fmt(IT[id].d.split(/(?<=\.) /)[0])}</span></button>`).join('');
+}
+
+/* --- Fenêtre --- */
+const dlg=$('#dlg'),body=$('#dlgbody');
+function sameGroup(id){const pre=id.match(/^[a-z]+_?/)[0],g=id.startsWith('i')&&/^i\d$/.test(id)?Object.keys(IT).filter(k=>/^i\d$/.test(k)):Object.keys(IT).filter(k=>k.startsWith(pre)&&!/^i\d$/.test(k));return g}
+function open(id){const s=IT[id],L=LINES[s.l],g=sameGroup(id),i=g.indexOf(id),prev=g[i-1],next=g[i+1];
+ const k=(s.k||[]).filter(x=>IT[x]).map(x=>`<button class="chip" data-open="${x}" style="${vars(IT[x].l)}">${badge(IT[x].l)}${esc(IT[x].t)}</button>`).join('');
+ const lin=NODES[id]?(()=>{const u=up(id),d=down(id);return(u.length?`<p><b>Vient de :</b> ${u.map(name).join(', ')}</p>`:'')+(d.length?`<p><b>Alimente :</b> ${d.map(name).join(', ')}</p>`:'')})():'';
+ body.innerHTML=`<div class="mh"><div class="ey"><span class="bd">${L.n}</span>${L.name}${L.who?' · '+L.who:''}${s.todo?' · à venir':''}${s.n?' · station '+s.n+' sur 8':''}</div><h2 id="dlgt">${esc(s.t)}</h2>${s.path?`<p class="path">${esc(s.path)}</p>`:''}<button class="close" aria-label="Fermer">×</button></div>
+ <div class="mb"><p class="def">${fmt(s.d)}</p>
+ ${s.p?`<div class="blk"><h3>À retenir</h3><ul>${s.p.map(x=>`<li>${fmt(x)}</li>`).join('')}</ul></div>`:''}
+ ${s.x?`<div class="blk"><h3>Exemple</h3><p>${fmt(s.x)}</p></div>`:''}
+ ${s.code?`<div class="blk"><h3>Dans le code</h3><pre>${esc(s.code)}</pre></div>`:''}
+ ${s.o?`<div class="blk out"><h3>La correction</h3><p>${fmt(s.o)}</p></div>`:''}
+ ${lin?`<div class="blk"><h3>Lignage</h3>${lin}</div>`:''}
+ ${k?`<div class="blk"><h3>Liens</h3><div class="chips">${k}</div></div>`:''}
+ <div class="mf"><button ${prev?`data-open="${prev}"`:'disabled'}>← Précédente</button><button ${next?`data-open="${next}"`:'disabled'}>Suivante →</button></div></div>`;
+ dlg.setAttribute('style',vars(s.l));if(!dlg.open)dlg.showModal();dlg.scrollTop=0}
+dlg.addEventListener('click',e=>{if(e.target===dlg||e.target.closest('.close')){dlg.close();return}const o=e.target.closest('[data-open]');if(o)open(o.dataset.open)});
+document.querySelector('main').addEventListener('click',e=>{const o=e.target.closest('[data-open]');if(o&&!e.target.closest('#map'))open(o.dataset.open)});
+
+/* --- Recherche --- */
+function bindSearch(){const q=$('#q'),r=$('#res'),close=()=>{r.hidden=true};
+ q.addEventListener('input',()=>{const v=norm(q.value.trim());if(!v){close();return}const ids=Object.keys(IT);
+  const m=ids.filter(id=>norm(IT[id].t).includes(v)).concat(ids.filter(id=>!norm(IT[id].t).includes(v)&&norm(IT[id].d+' '+(IT[id].p||[]).join(' ')).includes(v))).slice(0,9);
+  r.innerHTML=m.length?m.map(id=>`<li><button data-open="${id}">${badge(IT[id].l)}${esc(IT[id].t)}</button></li>`).join(''):'<li class="empty">Rien trouvé. Essaie « parquet » ou « sémaphore ».</li>';r.hidden=false});
+ q.addEventListener('keydown',e=>{if(e.key==='Escape'){q.value='';close()}if(e.key==='Enter'){const b=r.querySelector('button');if(b)b.click()}});
+ r.addEventListener('click',e=>{const o=e.target.closest('[data-open]');if(o){open(o.dataset.open);close()}});
+ document.addEventListener('click',e=>{if(!e.target.closest('.search'))close()})}
+
+buildMap();bindMap();buildPills();buildStats();buildChart();buildSections();bindSearch();
+</script>
+</body>
+</html>

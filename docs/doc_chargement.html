@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Le chargement pas à pas · load_all_parquet.py</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@700;800;900&family=Overpass:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Overpass+Mono:wght@500;700&display=swap">
+<style>
+/* Même palette que doc_yannis.html. Une couleur par phase du script :
+   teal = avant le script, bleu = main(), violet = préparer du texte SQL,
+   orange = données côté Python, vert = PostgreSQL, jaune = contrôle. */
+:root{
+  --bg:#EDF3F9; --surface:#FFFFFF; --sunken:#E0E9F2; --ink:#14202E; --muted:#526176; --rule:#CBD7E4;
+  --l1:#1565D8; --l2:#EA5F10; --l3:#0E9347; --l4:#8439CC; --l5:#E0AC00; --l6:#DD1F5B; --l7:#088E90;
+  --on1:#fff; --on2:#fff; --on3:#fff; --on4:#fff; --on5:#14202E; --on6:#fff; --on7:#fff;
+  --display:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --body:"Overpass","Trebuchet MS",system-ui,sans-serif;
+  --mono:"Overpass Mono",ui-monospace,Menlo,monospace;
+  --kw:#8439CC; --str:#0E7A3C; --com:#7A8798; --num:#C2410C;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0D1520; --surface:#162130; --sunken:#1E2C3E; --ink:#EAF1F8; --muted:#A1B2C6; --rule:#2C3D52;
+  --l1:#5E9FFF; --l2:#FF9150; --l3:#43D088; --l4:#BC8EF7; --l5:#F4C93F; --l6:#FF6D98; --l7:#41D5D1;
+  --on1:#0D1520; --on2:#0D1520; --on3:#0D1520; --on4:#0D1520; --on5:#0D1520; --on6:#0D1520; --on7:#0D1520;
+  --kw:#C9A2FF; --str:#6FDC9C; --com:#8696AA; --num:#FFA26B;
+  color-scheme:dark;
+}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;scroll-padding-top:64px}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.55}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:3px solid var(--l1);outline-offset:2px;border-radius:4px}
+h1,h2,h3,h4{margin:0;text-wrap:balance}
+p{margin:0}
+code{font:500 .86em var(--mono);background:var(--sunken);padding:.05em .35em;border-radius:4px;overflow-wrap:anywhere}
+.wrap{max-width:1120px;margin-inline:auto;padding-inline:16px}
+.bd{display:inline-grid;place-items:center;flex:none;min-width:26px;height:26px;padding-inline:6px;border-radius:99px;background:var(--c);color:var(--on);font:800 13px/1 var(--body)}
+
+/* Barre */
+.bar{position:sticky;top:0;z-index:9;background:var(--surface);border-bottom:1px solid var(--rule)}
+.bar .wrap{display:flex;gap:2px;flex-wrap:wrap;padding-block:8px}
+.bar a{padding:6px 10px;border-radius:8px;font-weight:700;font-size:14px;color:var(--muted);text-decoration:none}
+.bar a:hover{background:var(--sunken);color:var(--ink)}
+
+/* En-tête */
+.hero{padding-block:30px 6px}
+.eyebrow{font:700 13px var(--mono);letter-spacing:.04em;color:var(--muted)}
+.hero h1{font:900 clamp(46px,9vw,96px)/.92 var(--display);text-transform:uppercase;margin-block:8px 12px}
+.lede{font-size:18px;max-width:68ch}
+.recap{display:flex;flex-wrap:wrap;gap:6px 22px;font-size:14px;color:var(--muted);margin-top:14px}
+.recap b{color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+.legend span{display:flex;align-items:center;gap:8px;padding:4px 12px 4px 5px;border-radius:99px;border:2px solid var(--c);font-weight:700;font-size:14px}
+.legend i{width:16px;height:16px;border-radius:50%;background:var(--c)}
+
+section{padding-block:40px 6px}
+.sh{margin-bottom:16px}
+.sh h2{font:900 clamp(32px,5vw,48px)/1 var(--display);text-transform:uppercase}
+.sh p{color:var(--muted);margin-top:6px;max-width:72ch}
+
+/* Plan (lignage) */
+.mapbox{background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:8px;margin-top:22px}
+#map{display:block;width:100%;height:auto}
+#map .lane{fill:var(--sunken)}
+#map .lanet{font:800 15px var(--body);fill:var(--ink)}
+#map .lanes{font:600 12px var(--mono);fill:var(--muted)}
+#map .ed{fill:none;stroke:var(--c);stroke-width:5;stroke-linecap:round;opacity:.85;transition:opacity .15s}
+#map .ed.dash{stroke-width:2.5;stroke-dasharray:3 7}
+#map .edl{font:700 11px var(--mono);fill:var(--muted)}
+#map .st{cursor:pointer}
+#map .st .dot{fill:var(--surface);stroke:var(--c);stroke-width:5;transition:r .15s}
+#map .st:hover .dot,#map .st:focus .dot{r:15}
+#map .st .hit{fill:transparent}
+#map .lab{font:800 13px var(--mono);fill:var(--ink);text-anchor:middle}
+#map .sub{font:600 11px var(--body);fill:var(--muted);text-anchor:middle}
+#map.focus .ed:not(.lit){opacity:.12}
+#map.focus .st:not(.lit){opacity:.25}
+.readout{min-height:3em;margin-top:10px;font-size:15px}
+.hint{font-size:13px;color:var(--muted);margin-top:4px}
+
+/* Mémoire (variables) */
+.vars{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:10px}
+.var{display:flex;flex-direction:column;gap:6px;text-align:left;background:var(--surface);border:1px solid var(--rule);border-left:6px solid var(--c);border-radius:12px;padding:12px 14px;transition:transform .12s,box-shadow .12s}
+.var:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(10,20,35,.12)}
+.var .vh{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.var b{font:700 15px var(--mono)}
+.var small{font:700 11px var(--mono);color:var(--muted);white-space:nowrap}
+.var .kind{font-size:12px;font-weight:700;color:var(--c)}
+.var pre{margin:0;font:500 12px/1.45 var(--mono);white-space:pre-wrap;overflow-wrap:anywhere;background:var(--sunken);border-radius:8px;padding:7px 9px}
+.filters{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px}
+.filters button{border:2px solid var(--c);background:transparent;border-radius:99px;padding:3px 12px;font-weight:700;font-size:13px}
+.filters button[aria-pressed="true"]{background:var(--c);color:var(--on)}
+
+/* Simulation */
+.sim{background:var(--surface);border:1px solid var(--rule);border-radius:16px;padding:18px}
+.simtop{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between}
+.dots{display:flex;gap:6px;flex-wrap:wrap}
+.dots button{border:2px solid var(--rule);background:transparent;border-radius:99px;padding:3px 11px;font-weight:700;font-size:13px}
+.dots button[aria-current="step"]{border-color:var(--l3);background:var(--l3);color:var(--on3)}
+.nav2{display:flex;gap:8px}
+.nav2 button{padding:7px 14px;border-radius:9px;border:1.5px solid var(--rule);background:var(--bg);font-weight:700}
+.nav2 button:disabled{opacity:.35;cursor:default}
+.simcmd{margin-top:14px;display:flex;gap:10px;align-items:flex-start}
+.simcmd pre{flex:1;margin:0}
+.simnote{margin-top:10px;font-size:15px;background:var(--sunken);border-radius:10px;padding:10px 12px}
+.panes{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:10px;align-items:stretch;margin-top:14px}
+.pane{border:2px solid var(--c);border-radius:12px;padding:10px;min-height:170px;background:var(--bg);transition:box-shadow .2s}
+.pane.active{box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 30%,transparent)}
+.pane h4{font-size:14px;display:flex;gap:6px;align-items:center;margin-bottom:6px}
+.pane .where{font:600 11px var(--mono);color:var(--muted);margin-bottom:8px}
+.pane .empty{color:var(--muted);font-style:italic;font-size:14px;padding:16px 0;text-align:center}
+.parrow{align-self:center;font:900 26px var(--body);color:var(--muted);transition:color .2s}
+.parrow.on{color:var(--l3)}
+.pyrows{margin:0;font:500 12px/1.5 var(--mono);white-space:pre-wrap}
+
+/* Tableaux d'exemple */
+.mt{border-collapse:collapse;font:500 12.5px var(--mono);width:100%}
+.mt th{text-align:left;font-weight:700;color:var(--muted);border-bottom:1.5px solid var(--rule);padding:3px 6px}
+.mt td{padding:3px 6px;border-bottom:1px solid var(--rule)}
+.mt tr.new td{background:color-mix(in srgb,var(--l3) 18%,transparent)}
+.mt tr.upd td{background:color-mix(in srgb,var(--l5) 28%,transparent)}
+.mt tr.hid td{color:var(--muted);text-decoration:line-through}
+.mt caption{caption-side:top;text-align:left;font:700 12px var(--body);color:var(--muted);padding-bottom:4px}
+.tag{font:700 10px var(--body);padding:1px 6px;border-radius:99px;margin-left:4px;white-space:nowrap}
+.tag.new{background:var(--l3);color:var(--on3)}
+.tag.upd{background:var(--l5);color:var(--on5)}
+.duo{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(230px,100%),1fr));gap:12px;align-items:start}
+.flow{display:flex;flex-wrap:wrap;align-items:center;gap:6px 8px;font-size:14px}
+.flow .box{border:2px solid var(--c);border-radius:9px;padding:4px 10px;font:700 13px var(--mono);background:var(--surface)}
+.flow .ar{color:var(--muted);font-weight:900}
+
+/* Code */
+pre.code{margin:0;font:500 13px/1.6 var(--mono);background:var(--sunken);border-radius:10px;padding:10px 12px;overflow-x:auto;white-space:pre}
+pre.code .k{color:var(--kw);font-weight:700}
+pre.code .s{color:var(--str)}
+pre.code .c{color:var(--com);font-style:italic}
+pre.code .n{color:var(--num)}
+
+/* Étapes */
+.phase{display:flex;align-items:center;gap:10px;margin:28px 0 12px;font:800 18px var(--body)}
+.phase:first-child{margin-top:0}
+.phase i{width:14px;height:14px;border-radius:50%;background:var(--c)}
+.phase small{font:600 13px var(--body);color:var(--muted)}
+.steps{position:relative;padding-left:46px}
+.steps::before{content:"";position:absolute;left:17px;top:6px;bottom:6px;width:6px;border-radius:3px;background:linear-gradient(var(--l7),var(--l1),var(--l4),var(--l2),var(--l3),var(--l5))}
+.step{position:relative;background:var(--surface);border:1px solid var(--rule);border-top:5px solid var(--c);border-radius:14px;padding:14px 16px;margin-bottom:14px}
+.step::before{content:attr(data-n);position:absolute;left:-46px;top:12px;width:40px;height:40px;border-radius:50%;background:var(--surface);border:5px solid var(--c);display:grid;place-items:center;font:800 14px var(--body)}
+.step .sh3{display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap}
+.step h3{font-size:19px}
+.lines{font:700 12px var(--mono);color:var(--c);white-space:nowrap}
+.step .d{margin-top:6px}
+.step .ex{margin-top:12px}
+.exl{font:700 12px var(--body);text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px}
+details{margin-top:10px;border:1px solid var(--rule);border-radius:10px;background:var(--bg)}
+details>summary{cursor:pointer;padding:7px 12px;font-weight:700;font-size:14px;list-style:none;display:flex;gap:8px;align-items:center}
+details>summary::-webkit-details-marker{display:none}
+details>summary::before{content:"▸";color:var(--c,var(--muted));transition:transform .15s}
+details[open]>summary::before{transform:rotate(90deg)}
+details>.in{padding:2px 12px 12px;display:flex;flex-direction:column;gap:10px;font-size:15px}
+.more{margin-top:12px;align-self:flex-start;background:none;border:2px solid var(--c);color:var(--ink);border-radius:99px;padding:4px 14px;font-weight:700;font-size:14px}
+.more:hover{background:var(--c);color:var(--on)}
+ul.pts{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+
+/* Questions et remarques */
+.faq details{background:var(--surface);margin-top:8px;--c:var(--l1)}
+.faq details>summary{font-size:15px;padding:10px 14px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(250px,100%),1fr));gap:12px}
+.card{text-align:left;display:flex;flex-direction:column;gap:6px;background:var(--surface);border:1px solid var(--rule);border-top:5px solid var(--c);border-radius:12px;padding:14px;transition:transform .12s,box-shadow .12s}
+.card:hover{transform:translateY(-2px);box-shadow:0 8px 22px rgba(10,20,35,.12)}
+.card b{font-size:16px}
+.card span{font-size:14px;color:var(--muted)}
+.card em{font-style:normal;font-weight:700;font-size:13px;color:var(--c)}
+
+/* Fenêtre */
+dialog{width:min(820px,calc(100vw - 24px));max-height:calc(100vh - 40px);border:0;border-radius:16px;padding:0;background:var(--surface);color:var(--ink);box-shadow:0 30px 80px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(10,18,30,.55)}
+.mh{position:sticky;top:0;background:var(--surface);border-bottom:4px solid var(--c);padding:16px 54px 12px 20px;z-index:1}
+.mh .ey{font:700 12px var(--mono);color:var(--c);letter-spacing:.04em}
+.mh h2{font-size:24px;margin-top:4px}
+.close{position:absolute;right:12px;top:12px;width:36px;height:36px;border-radius:50%;border:0;background:var(--sunken);font-size:20px}
+.mb{padding:16px 20px 20px;display:flex;flex-direction:column;gap:16px}
+.blk h3{font-size:13px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px}
+.blk.why{background:color-mix(in srgb,var(--c) 10%,var(--surface));border-left:4px solid var(--c);border-radius:8px;padding:10px 12px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:2px solid var(--c);background:transparent;border-radius:99px;padding:2px 10px;font:700 12px var(--mono)}
+.chip:hover{background:var(--c);color:var(--on)}
+.mf{display:flex;justify-content:space-between;gap:8px;border-top:1px solid var(--rule);padding-top:12px}
+.mf button{padding:7px 12px;border-radius:9px;border:1.5px solid var(--rule);background:none;font-weight:700;font-size:14px}
+.mf button:disabled{opacity:.35;cursor:default}
+
+footer{padding:40px 0 30px;color:var(--muted);font-size:13px}
+@media (max-width:800px){.panes{grid-template-columns:1fr}.parrow{transform:rotate(90deg);justify-self:center}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+
+<nav class="bar" aria-label="Sections"><div class="wrap">
+  <a href="#plan">Plan</a><a href="#memoire">Mémoire de Python</a><a href="#simulation">Simulation</a><a href="#etapes">Étapes</a><a href="#questions">Questions</a><a href="#signaler">À signaler</a>
+</div></nav>
+
+<main class="wrap">
+  <header class="hero" id="plan">
+    <p class="eyebrow">Base SQL · scripts/load/load_all_parquet.py · travail de Salma, relu par Yannis</p>
+    <h1>Le chargement pas à pas</h1>
+    <p class="lede">Comment les 5 tableaux Parquet d’Aida entrent dans PostgreSQL. Le script fait deux choses bien séparées : d’abord il <b>prépare du texte SQL</b> (aucune donnée ne bouge), ensuite il <b>fait circuler les données</b>, paquet de 5 000 lignes par paquet de 5 000 lignes.</p>
+    <div class="recap"><span><b>Avant :</b> la transformation a écrit <code>data/processed/</code> ; <code>schema.sql</code> a créé les tables vides.</span><span><b>Après :</b> les 5 requêtes d’analyse et le test d’index de Salma.</span></div>
+    <div class="legend" id="legend"></div>
+  </header>
+
+  <div class="mapbox"><svg id="map" viewBox="0 0 1000 560" role="img" aria-label="Lignage du script : préparation du texte SQL en haut, circulation des données en bas"></svg></div>
+  <p class="readout" id="readout" aria-live="polite">Survole une station pour voir d’où elle vient et ce qu’elle alimente. Clique pour ouvrir l’étape.</p>
+  <p class="hint">Traits pleins : une valeur en fabrique une autre. Pointillés : le texte préparé en haut est utilisé par l’exécution en bas.</p>
+
+  <section id="memoire">
+    <div class="sh"><h2>La mémoire de Python</h2><p>Toutes les variables du script, avec leur contenu réel pour <code>movies</code>. L’exemple est réduit à 3 colonnes (<code>id</code>, <code>title</code>, <code>vote_average</code>) pour rester lisible ; la vraie table en a 18. Clique sur une variable pour ouvrir l’étape qui la crée.</p></div>
+    <div class="filters" id="filters"></div>
+    <div class="vars" id="vars"></div>
+  </section>
+
+  <section id="simulation">
+    <div class="sh"><h2>Simulation : un paquet</h2><p>Le 2e lancement du script, avec un paquet de 3 films au lieu de 5 000. Inception est déjà en base avec une note de 8.3, et le Parquet contient sa note mise à jour, 8.4. Avance pas à pas et regarde où sont les données.</p></div>
+    <div class="sim">
+      <div class="simtop"><div class="dots" id="dots"></div><div class="nav2"><button id="prev">← Précédent</button><button id="next">Suivant →</button></div></div>
+      <div class="simcmd"><span class="bd" id="simline" style="--c:var(--l3);--on:var(--on3)"></span><pre class="code" id="simsql"></pre></div>
+      <p class="simnote" id="simnote"></p>
+      <div class="panes">
+        <div class="pane" id="p1" style="--c:var(--l2)"><h4>Mémoire de Python</h4><p class="where">rows (liste de dictionnaires)</p><div id="b1"></div></div>
+        <div class="parrow" id="a1" aria-hidden="true">→</div>
+        <div class="pane" id="p2" style="--c:var(--l4)"><h4>stage_load</h4><p class="where">table temporaire, aucune règle</p><div id="b2"></div></div>
+        <div class="parrow" id="a2" aria-hidden="true">→</div>
+        <div class="pane" id="p3" style="--c:var(--l3)"><h4>pipeline.movies</h4><p class="where">vraie table, clé primaire id</p><div id="b3"></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="etapes">
+    <div class="sh"><h2>Les étapes</h2><p>Dans l’ordre où elles s’exécutent. Chaque étape montre ce qu’elle fait, un exemple de données, le code dans un menu, et une fiche complète au clic.</p></div>
+    <div class="steps" id="steps"></div>
+  </section>
+
+  <section id="questions" class="faq">
+    <div class="sh"><h2>Questions</h2><p>Celles qu’on s’est posées en lisant le script.</p></div>
+    <div id="faq"></div>
+  </section>
+
+  <section id="signaler">
+    <div class="sh"><h2>À signaler à Salma</h2><p>Rien de bloquant : le script marche et il est relançable. Ce sont des points de documentation et de lisibilité.</p></div>
+    <div class="cards" id="sig"></div>
+  </section>
+
+  <footer>Doc écrite à partir de <code>scripts/load/load_all_parquet.py</code>, <code>sql/schema.sql</code> et <code>docs/note_cenception_sql.md</code>. Les valeurs d’exemple sont réduites à 3 colonnes et 3 films ; les vrais chiffres : 25 389 films, 2 675 072 lignes en tout.</footer>
+</main>
+
+<dialog id="dlg" aria-labelledby="dlgt"><div id="dlgbody"></div></dialog>
+
+<script>
+/* ---------- Outils ---------- */
+const $=q=>document.querySelector(q);
+const esc=s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const PH={
+ avant:{c:7,name:'Avant le script'},
+ main:{c:1,name:'main() : une connexion par table'},
+ prep:{c:4,name:'Préparer : du texte SQL, aucune donnée ne bouge'},
+ data:{c:2,name:'Données côté Python'},
+ pg:{c:3,name:'Données côté PostgreSQL'},
+ ctrl:{c:5,name:'Contrôle et fin'}
+};
+const cv=ph=>`--c:var(--l${PH[ph].c});--on:var(--on${PH[ph].c})`;
+
+/* Coloration simple du Python et du SQL */
+const KW='def|for|in|with|as|if|else|not|return|import|from|raise|and|SELECT|FROM|INSERT|INTO|ON|CONFLICT|DO|UPDATE|SET|NOTHING|COPY|STDIN|CREATE|TEMP|TABLE|LIKE|EXCLUDING|ALL|COMMIT|DROP|TRUNCATE|WHERE|JOIN|AND|NOT|ORDER|BY|COUNT|EXCLUDED|true|SCHEMA|IF|EXISTS|PRIMARY|KEY|NULL|REFERENCES|BIGINT|TEXT|DATABASE|AS';
+const TOK=new RegExp(`(#[^\\n]*|--[^\\n]*)|("""[\\s\\S]*?"""|"(?:[^"\\\\\\n]|\\\\.)*"|'(?:[^'\\\\\\n]|\\\\.)*')|\\b(${KW})\\b|\\b(\\d+)\\b`,'g');
+function hl(code){let out='',last=0,m;TOK.lastIndex=0;
+ while((m=TOK.exec(code))){out+=esc(code.slice(last,m.index));
+  const cls=m[1]?'c':m[2]?'s':m[3]?'k':'n';out+=`<span class="${cls}">${esc(m[0])}</span>`;last=TOK.lastIndex}
+ return out+esc(code.slice(last))}
+const pre=code=>`<pre class="code">${hl(code)}</pre>`;
+
+/* Petit tableau d'exemple. rows : tableaux de cellules ; cls : classe par ligne (new, upd, hid) */
+function tbl(cols,rows,cap,cls=[]){
+ return `<table class="mt">${cap?`<caption>${cap}</caption>`:''}<tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr>${rows.map((r,i)=>`<tr class="${cls[i]||''}">${r.map(v=>`<td>${v}</td>`).join('')}</tr>`).join('')}</table>`}
+const flow=items=>`<div class="flow">${items.map(x=>typeof x==='string'?`<span class="ar">${x}</span>`:`<span class="box" style="${cv(x[1])}">${x[0]}</span>`).join('')}</div>`;
+
+/* ---------- Les étapes ---------- */
+const STEPS=[
+/* 0 */ {ph:'avant',t:'La base et les tables vides',l:'sql/schema.sql',
+ d:`Avant de lancer le script, il faut une base <code>movie_analytics</code> et les 5 tables <b>vides</b>, créées par <code>sql/schema.sql</code>. Ces deux étapes se font <b>à la main</b>, une fois. Elles ne sont écrites nulle part dans le dépôt.`,
+ why:`Le script ne crée pas les tables : il les remplit. Il lit même leur structure pour savoir quelles colonnes charger (étape 4). Sans <code>schema.sql</code>, il s’arrête sur « Table cible introuvable ».`,
+ code:`-- 1. créer la base (à la main, une fois)
+CREATE DATABASE movie_analytics;
+
+-- 2. sql/schema.sql (avec pgAdmin, ou psql -f sql/schema.sql)
+CREATE SCHEMA IF NOT EXISTS pipeline;
+SET search_path TO pipeline, public;
+
+CREATE TABLE movies (
+    id BIGINT PRIMARY KEY,
+    title TEXT NOT NULL,
+    ...
+);`,
+ ex:()=>flow([['serveur localhost:5433','avant'],'→',['base movie_analytics','avant'],'→',['schéma pipeline','avant'],'→',['movies · genres · people · movie_genres · credits','pg']])+`<p style="margin-top:8px;font-size:14px;color:var(--muted)">Les 5 tables existent, avec leurs colonnes, leurs types et leurs règles, mais 0 ligne.</p>`,
+ more:`<p><b>Un schéma</b> regroupe des tables à l’intérieur d’une base. Le nom complet d’une table est <code>pipeline.movies</code>.</p>
+ <p><b><code>SET search_path TO pipeline, public</code></b> : quand on écrit un nom de table sans schéma, PostgreSQL le cherche d’abord dans <code>pipeline</code>. Donc <code>CREATE TABLE movies</code> crée en réalité <code>pipeline.movies</code>. Ce réglage ne vaut que pour la session en cours : le script Python, lui, écrit toujours le nom complet.</p>
+ <p><b>Les règles</b> que la base appliquera à chaque ligne : <code>PRIMARY KEY</code> (unique et obligatoire), <code>NOT NULL</code>, <code>REFERENCES</code> (clé étrangère), <code>CHECK (type IN ('cast','crew'))</code>.</p>`,
+ v:[]},
+/* 1 */ {ph:'main',t:'main() : mot de passe, puis une connexion par table',l:'lignes 90-105',
+ d:`Le point de départ. Le script demande le mot de passe, puis, pour chaque table dans un ordre fixé, ouvre une connexion à PostgreSQL et appelle <code>load_table</code>.`,
+ why:`<b>L’ordre</b> suit les clés étrangères : un crédit ne peut pas pointer vers un film qui n’est pas encore en base, donc les tables « parents » d’abord. <b>Une connexion par table</b> : si <code>credits</code> plante, les 4 tables d’avant restent chargées.`,
+ code:`TABLES = ("genres", "movies", "people", "movie_genres", "credits")   # ligne 13
+
+def main():
+    password = getpass("Mot de passe PostgreSQL : ")   # tapé sans s'afficher
+    for name in TABLES:
+        with psycopg.connect(host="localhost", port=5433,
+                             dbname="movie_analytics", user="postgres",
+                             password=password) as conn:
+            load_table(conn, name)          # toute la suite se passe ici
+        # sortie du with : commit si tout va bien, rollback sinon`,
+ ex:()=>flow([['genres','pg'],'→',['movies','pg'],'→',['people','pg'],'→',['movie_genres','pg'],'→',['credits','pg']])+`<p style="margin-top:8px;font-size:14px;color:var(--muted)"><code>movie_genres</code> pointe vers <code>movies</code> et <code>genres</code> ; <code>credits</code> vers <code>movies</code> et <code>people</code>. Ils passent donc en dernier.</p>`,
+ more:`<p><b><code>with</code></b> ouvre une ressource et garantit qu’elle sera refermée à la fin du bloc, même en cas d’erreur. Il n’attrape pas l’erreur : elle remonte et le script s’arrête.</p>
+ ${tbl(['','Le script s’arrête ?','La ressource est fermée ?'],[['rien','oui','<b>non</b>'],['try / except','<b>non</b>, il continue','non'],['with','oui','<b>oui</b>']],'Si load_table plante au milieu de credits')}
+ <p>Pour une connexion psycopg, la sortie du <code>with</code> fait : <code>commit</code> (tout devient définitif) s’il n’y a pas eu d’erreur, sinon <code>rollback</code> (tout ce qui a été écrit pour cette table est annulé). Puis la connexion est fermée.</p>
+ <p><b><code>getpass</code></b> : le mot de passe n’est écrit dans aucun fichier. En revanche, l’hôte, le port et l’utilisateur sont écrits en dur, alors que <code>.env.example</code> prévoit <code>DATABASE_URL</code>.</p>`,
+ v:['password']},
+/* 2 */ {ph:'prep',t:'Trouver les fichiers Parquet',l:'lignes 17-20',
+ d:`On liste les fichiers Parquet du dossier de la table. S’il n’y en a aucun, on s’arrête avec un message clair.`,
+ why:`La transformation écrit un fichier par lot de 1 000 films : il y a 38 fichiers par table. Le script doit tous les parcourir, dans l’ordre.`,
+ code:`directory = DATA_DIR / table_name                 # data/processed/movies
+paths = sorted(directory.glob("*.parquet"))
+if not paths:
+    raise FileNotFoundError(f"Aucun fichier Parquet dans {directory}")`,
+ ex:()=>`<pre class="code">${hl(`paths = [
+  ".../data/processed/movies/part-0000.parquet",
+  ".../data/processed/movies/part-0001.parquet",
+  ...                                      # 38 fichiers
+]`)}</pre>`,
+ more:`<p><code>glob("*.parquet")</code> : tous les fichiers qui finissent par <code>.parquet</code>. <code>sorted</code> : dans l’ordre. <code>raise</code> : on déclenche volontairement une erreur, par exemple si on a oublié de lancer la transformation.</p>`,
+ v:['paths']},
+/* 3 */ {ph:'prep',t:'Créer la table temporaire stage_load',l:'lignes 22-28',
+ d:`On crée une table <code>stage_load</code> avec <b>les mêmes colonnes et les mêmes types</b> que la vraie table, mais <b>sans aucune règle</b>. Elle est vide, et elle disparaîtra toute seule au commit.`,
+ why:`C’est une <b>zone de transit</b>. Plus tard, on y versera chaque paquet très vite avec <code>COPY</code> (qui ne sait pas gérer les doublons), puis une seule requête le fera passer dans la vraie table en appliquant les règles.`,
+ code:`destination = sql.Identifier("pipeline", table_name)     # "pipeline"."movies"
+with conn.cursor() as cur:
+    cur.execute(
+        sql.SQL("CREATE TEMP TABLE stage_load (LIKE {} EXCLUDING ALL) ON COMMIT DROP")
+        .format(destination)
+    )`,
+ ex:()=>`<div class="duo">${tbl(['colonne','type','règle'],[['id','BIGINT','PRIMARY KEY'],['title','TEXT','NOT NULL'],['vote_average','DOUBLE','—']],'pipeline.movies (vraie table, vide)')}${tbl(['colonne','type','règle'],[['id','BIGINT','—'],['title','TEXT','—'],['vote_average','DOUBLE','—']],'stage_load (copie de la structure, aucune règle)')}</div>`,
+ more:`<ul class="pts"><li><code>TEMP</code> : temporaire, visible seulement par cette connexion.</li><li><code>LIKE pipeline.movies</code> : mêmes colonnes et mêmes types.</li><li><code>EXCLUDING ALL</code> : sans clé primaire, sans <code>NOT NULL</code>, sans clé étrangère.</li><li><code>ON COMMIT DROP</code> : supprimée au commit, à la sortie du <code>with</code> de <code>main</code>.</li></ul>
+ <p><b>Le curseur</b> (<code>conn.cursor()</code>) est l’objet qui envoie les commandes (<code>cur.execute</code>) et lit les réponses (<code>cur.fetchall</code>). La connexion est le lien, le curseur l’utilise.</p>
+ <p><b><code>{}</code> et <code>.format(...)</code></b> : le trou reçoit un <b>nom</b> (table, colonne), mis entre guillemets par <code>sql.Identifier</code>. À ne pas confondre avec <code>%s</code>, qui reçoit une <b>valeur</b> (étape suivante).</p>`,
+ v:['destination']},
+/* 4 */ {ph:'prep',t:'Demander les noms des colonnes à PostgreSQL',l:'lignes 29-41',
+ d:`Le script ne recopie pas la liste des colonnes à la main : il la demande à PostgreSQL, dans ses tables internes (le <b>catalogue</b>). Il obtient <b>seulement des noms</b>, dans l’ordre de <code>schema.sql</code>.`,
+ why:`Le script marche pour les 5 tables sans liste écrite dans le code, et suit automatiquement <code>schema.sql</code> si une colonne est ajoutée. Les tables existent déjà (vides) : c’est leur <b>structure</b> qu’on lit, pas leurs données.`,
+ code:`cur.execute(
+    """SELECT a.attname
+         FROM pg_attribute AS a
+         JOIN pg_class     AS c ON a.attrelid = c.oid
+         JOIN pg_namespace AS n ON c.relnamespace = n.oid
+        WHERE n.nspname = 'pipeline' AND c.relname = %s
+          AND a.attnum > 0 AND NOT a.attisdropped
+        ORDER BY a.attnum""",
+    (table_name,),            # remplit le %s : 'movies'
+)
+columns = [row[0] for row in cur.fetchall()]
+if not columns:
+    raise ValueError(f"Table cible introuvable : pipeline.{table_name}")`,
+ ex:()=>`<div class="duo">${tbl(['attname','attnum','table','schéma'],[['ctid','-1','movies','pipeline'],['id','1','movies','pipeline'],['title','2','movies','pipeline'],['vote_average','3','movies','pipeline'],['id','1','genres','pipeline']],'Après les deux JOIN',['hid','','','','hid'])}<div>${tbl(['attname'],[['id'],['title'],['vote_average']],'Après WHERE et ORDER BY')}<pre class="code" style="margin-top:8px">${hl(`cur.fetchall() → [("id",), ("title",), ("vote_average",)]
+columns       → ["id", "title", "vote_average"]`)}</pre></div></div>`,
+ more:`${tbl(['table interne','une ligne par','colonne utilisée'],[['pg_namespace','schéma','nspname = pipeline'],['pg_class','table','relname = movies'],['pg_attribute','colonne','attname, attnum']])}
+ <ul class="pts"><li><b>Les deux JOIN</b> relient une colonne à sa table, puis la table à son schéma (par les identifiants internes <code>oid</code>).</li><li><code>attnum > 0</code> écarte les colonnes cachées comme <code>ctid</code> (numéro négatif) ; <code>NOT attisdropped</code>, les colonnes supprimées.</li><li><code>%s</code> + <code>(table_name,)</code> : une <b>valeur</b>. La virgule fait un tuple d’un seul élément.</li><li><code>row[0]</code> : le premier (et seul) élément de chaque tuple.</li><li>Ces tables <code>pg_…</code> existent dès la création de la base : PostgreSQL les tient à jour à chaque <code>CREATE TABLE</code>.</li></ul>`,
+ v:['columns']},
+/* 5 */ {ph:'prep',t:'Mettre les noms au format SQL',l:'ligne 43',
+ d:`On transforme la liste Python en un morceau de texte SQL : les noms entre guillemets, séparés par des virgules.`,
+ why:`Ce morceau servira deux fois : dans <code>COPY stage_load (…)</code> et dans <code>INSERT INTO pipeline.movies (…) SELECT …</code>. Une commande SQL doit nommer les colonnes qu’elle remplit.`,
+ code:`column_names = sql.SQL(", ").join(map(sql.Identifier, columns))`,
+ ex:()=>`<pre class="code">${hl(`columns      = ["id", "title", "vote_average"]          # liste Python
+column_names = "id", "title", "vote_average"            # morceau de SQL`)}</pre>`,
+ more:`<p>Ça se lit de l’intérieur vers l’extérieur : <code>map(sql.Identifier, columns)</code> met chaque nom au format SQL, puis <code>sql.SQL(", ").join(...)</code> les colle avec des virgules. C’est le <code>", ".join([...])</code> de Python, en version sûre pour le SQL.</p>`,
+ v:['column_names']},
+/* 6 */ {ph:'prep',t:'Trier les colonnes en deux groupes',l:'lignes 44-47',
+ d:`<b>Groupe 1, la clé</b> : la colonne qui reconnaît une ligne déjà présente. <b>Groupe 2, le reste</b> : les colonnes à mettre à jour si la ligne existe déjà.`,
+ why:`C’est la préparation de la règle anti-doublon. Un <b>doublon</b>, c’est une <b>ligne</b> (pas une colonne) qu’on essaie d’insérer alors qu’une ligne avec la même clé existe déjà : typiquement au 2e lancement du script.`,
+ code:`pk_cols = {"movies": ["id"], "genres": ["id"], "people": ["id"],
+           "movie_genres": ["movie_id", "genre_id"],
+           "credits": ["credit_id"]}[table_name]
+conflict_columns = sql.SQL(", ").join(map(sql.Identifier, pk_cols))
+other_cols = [name for name in columns if name not in pk_cols]`,
+ ex:()=>`<div class="duo">${tbl(['variable','movies','movie_genres'],[['columns','id, title, vote_average','movie_id, genre_id'],['pk_cols','<b>id</b>','<b>movie_id, genre_id</b>'],['conflict_columns','"id"','"movie_id", "genre_id"'],['other_cols','title, vote_average','<i>[] vide</i>']])}</div>
+ <div style="margin-top:10px">${tbl(['groupe','pour movies','sert à'],[['1 · pk_cols','id','<b>reconnaître</b> une ligne déjà présente (ON CONFLICT ("id"))'],['2 · other_cols','title, vote_average','la <b>mettre à jour</b> (DO UPDATE SET …)']],'Les deux groupes')}</div>`,
+ more:`<p><b><code>{...}[table_name]</code></b> : un dictionnaire dont on lit directement une case. Équivalent à <code>cles = {...}</code> puis <code>pk_cols = cles[table_name]</code>. Les clés sont les mêmes que les <code>PRIMARY KEY</code> de <code>schema.sql</code>.</p>
+ <p><b><code>[name for name in columns if name not in pk_cols]</code></b> : « pour chaque nom de <code>columns</code>, garde-le s’il n’est pas dans la clé ». On ne met jamais à jour la clé : c’est elle qui sert à reconnaître la ligne.</p>
+ <p><b>Rien n’est vérifié ici</b> : on ne fait que préparer du texte.</p>`,
+ v:['pk_cols','conflict_columns','other_cols']},
+/* 7 */ {ph:'prep',t:'Écrire quoi faire en cas de doublon',l:'lignes 48-55',
+ d:`S’il y a des colonnes à mettre à jour, on écrit <code>DO UPDATE SET col = EXCLUDED.col, …</code>. Sinon (seulement <code>movie_genres</code>), on écrit <code>DO NOTHING</code>.`,
+ why:`<b><code>EXCLUDED</code></b> désigne la <b>nouvelle</b> ligne, celle qui arrivait et qui est entrée en conflit. <code>"vote_average" = EXCLUDED."vote_average"</code> veut dire : « dans la ligne déjà en base, remplace la note par celle de la nouvelle ligne ».`,
+ code:`if other_cols:
+    assignments = sql.SQL(", ").join(
+        sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(name), sql.Identifier(name))
+        for name in other_cols
+    )
+    on_conflict = sql.SQL("DO UPDATE SET ") + assignments
+else:
+    on_conflict = sql.SQL("DO NOTHING")`,
+ ex:()=>`${tbl(['table','on_conflict'],[['movies','DO UPDATE SET "title" = EXCLUDED."title", "vote_average" = EXCLUDED."vote_average"'],['movie_genres','DO NOTHING']])}
+ <div class="duo" style="margin-top:10px">${tbl(['id','title','vote_average'],[['27205','Inception','8.3']],'ancienne ligne (déjà dans pipeline.movies) : "vote_average"')}${tbl(['id','title','vote_average'],[['27205','Inception','8.4']],'nouvelle ligne (arrive de stage_load) : EXCLUDED."vote_average"')}</div>`,
+ more:`<p>La même chose avec une boucle <code>for</code> classique :</p>${pre(`if other_cols:                                  # liste non vide = vrai
+    morceaux = []
+    for name in other_cols:                     # "title", puis "vote_average"
+        morceau = sql.SQL("{} = EXCLUDED.{}").format(sql.Identifier(name), sql.Identifier(name))
+        morceaux.append(morceau)
+    assignments = sql.SQL(", ").join(morceaux)  # colle avec des virgules
+    on_conflict = sql.SQL("DO UPDATE SET ") + assignments
+else:                                           # movie_genres : rien à mettre à jour
+    on_conflict = sql.SQL("DO NOTHING")`)}
+ ${tbl(['moment','morceaux'],[['avant la boucle','[]'],['après "title"','[ "title" = EXCLUDED."title" ]'],['après "vote_average"','[ "title" = EXCLUDED."title", "vote_average" = EXCLUDED."vote_average" ]']])}
+ <p><b>Pourquoi <code>DO NOTHING</code> pour <code>movie_genres</code></b> : ses deux colonnes forment la clé. Si le couple (film, genre) existe déjà, la ligne est identique : il n’y a rien à changer.</p>`,
+ v:['on_conflict']},
+/* 8 */ {ph:'prep',t:'Assembler les deux commandes',l:'lignes 57-62',
+ d:`On remplit les trous <code>{}</code> avec les morceaux préparés. On obtient deux textes SQL complets, rangés dans deux variables. <b>Rien n’est lancé.</b>`,
+ why:`<b><code>copy_stmt</code></b> remplira la table temporaire. <b><code>merge_stmt</code></b> fera la vraie insertion dans <code>pipeline.movies</code>. Elles sont écrites ici dans l’ordre inverse de leur exécution : ça n’a aucune importance, on ne fait que ranger du texte.`,
+ code:`# SELECT ... WHERE true résout l'ambiguïté SQL de ON CONFLICT après SELECT.
+merge_stmt = sql.SQL(
+    "INSERT INTO {} ({}) SELECT {} FROM stage_load WHERE true "
+    "ON CONFLICT ({}) {}"
+).format(destination, column_names, column_names, conflict_columns, on_conflict)
+copy_stmt = sql.SQL("COPY stage_load ({}) FROM STDIN").format(column_names)`,
+ ex:()=>`${tbl(['trou','rempli par'],[['1er {}','destination'],['2e {}','column_names'],['3e {}','column_names'],['4e {}','conflict_columns'],['5e {}','on_conflict']],'merge_stmt : les 5 trous, dans l’ordre')}
+ <p class="exl" style="margin-top:10px">copy_stmt (exécutée en 1er, lignes 76-78)</p>${pre(`COPY stage_load ("id", "title", "vote_average") FROM STDIN`)}
+ <p class="exl" style="margin-top:10px">merge_stmt (exécutée en 2e, ligne 79)</p>${pre(`INSERT INTO "pipeline"."movies" ("id", "title", "vote_average")
+SELECT "id", "title", "vote_average" FROM stage_load WHERE true
+ON CONFLICT ("id") DO UPDATE SET "title" = EXCLUDED."title",
+                                 "vote_average" = EXCLUDED."vote_average"`)}`,
+ more:`<ul class="pts"><li><b>Deux chaînes sur deux lignes</b> (<code>"INSERT ..." "ON CONFLICT ..."</code>) : Python les colle automatiquement. C’est juste pour la longueur de ligne.</li><li><b><code>SELECT … FROM stage_load</code></b> : les lignes à insérer ne sont pas écrites à la main (<code>VALUES</code>), ce sont toutes celles de <code>stage_load</code>.</li><li><b><code>WHERE true</code></b> ne filtre rien. Il marque la fin du <code>SELECT</code>, pour que PostgreSQL ne confonde pas la suite avec le <code>ON CONFLICT</code>.</li><li><b><code>FROM STDIN</code></b> : les données arriveront du programme qui a lancé la commande, Python, et non d’un fichier.</li><li><b>Le <code>(…)</code> de <code>COPY</code></b> contient des <b>noms</b>, rempli ici. Les <b>données</b> passeront plus tard par le <code>STDIN</code>.</li></ul>`,
+ v:['copy_stmt','merge_stmt']},
+/* 9 */ {ph:'data',t:'Pour chaque fichier : vérifier ses colonnes',l:'lignes 64-70',
+ d:`On met le compteur à 0, puis on ouvre chaque fichier Parquet. Avant de le lire, on vérifie qu’il contient bien toutes les colonnes attendues.`,
+ why:`Un garde-fou au cas où le Parquet d’Aida et le schéma de Salma ne seraient pas d’accord, par exemple une colonne renommée d’un côté seulement. Le script s’arrête avec la liste des colonnes manquantes, au lieu d’une erreur obscure plus loin.`,
+ code:`processed = 0
+for file_path in paths:
+    parquet = pq.ParquetFile(file_path)
+    available = set(parquet.schema_arrow.names)
+    missing = set(columns) - available
+    if missing:
+        raise ValueError(f"Colonnes manquantes dans {file_path.name}: {sorted(missing)}")`,
+ ex:()=>`<pre class="code">${hl(`available = {"id", "title", "vote_average", "budget", ...}   # dans le Parquet
+set(columns) - available = set()      # vide : rien ne manque, on continue
+# si le Parquet n'avait pas "title" : {"title"} → arrêt avec le message`)}</pre>`,
+ more:`<p><code>set(...)</code> fait un ensemble, et <code>a - b</code> donne ce qui est dans <code>a</code> mais pas dans <code>b</code>. Le Parquet peut avoir des colonnes en plus : seules celles qui manquent posent problème.</p>`,
+ v:['processed']},
+/* 10 */ {ph:'data',t:'Lire un paquet de 5 000 lignes',l:'lignes 72-74',
+ d:`<code>iter_batches</code> lit le fichier par paquets de 5 000 lignes, seulement les colonnes de <code>columns</code>, dans cet ordre. <code>to_pylist()</code> transforme le paquet en une liste de dictionnaires Python.`,
+ why:`<b>Ne pas tout charger en mémoire</b> : <code>credits</code> fait presque 2 millions de lignes. C’est la même exigence de la fiche que pour la transformation. <b>C’est Python qui lit le Parquet</b> : PostgreSQL ne le verra jamais.`,
+ code:`for record_batch in parquet.iter_batches(batch_size=BATCH_SIZE, columns=columns):
+    rows = record_batch.to_pylist()`,
+ ex:()=>`<pre class="code">${hl(`rows = [
+    {"id": 27205,  "title": "Inception",       "vote_average": 8.4},
+    {"id": 155,    "title": "The Dark Knight", "vote_average": 8.5},
+    {"id": 157336, "title": "Interstellar",    "vote_average": 8.4},
+    ...                                           # 5 000 en vrai
+]`)}</pre>`,
+ more:`<p><code>BATCH_SIZE = 5000</code> est réglé ligne 10. Le dernier paquet d’un fichier peut être plus petit.</p>`,
+ v:['rows']},
+/* 11 */ {ph:'pg',t:'Vider stage_load',l:'ligne 75',
+ d:`On vide la table temporaire avant d’y verser le nouveau paquet.`,
+ why:`Sinon, le paquet précédent y serait encore, et la fusion le retraiterait à chaque tour.`,
+ code:`cur.execute("TRUNCATE stage_load")`,
+ ex:()=>tbl(['id','title','vote_average'],[['<i>vide</i>','','']],'stage_load'),
+ more:`<p><code>TRUNCATE</code> vide une table d’un coup, plus vite qu’un <code>DELETE</code> ligne par ligne.</p>`,
+ v:[]},
+/* 12 */ {ph:'pg',t:'COPY : verser le paquet dans stage_load',l:'lignes 76-78',
+ d:`<code>cur.copy(copy_stmt)</code> envoie la commande : PostgreSQL ouvre l’entrée de <code>stage_load</code> et attend. Puis <code>write_row</code> envoie chaque film, dans l’ordre de <code>columns</code>, par le <code>STDIN</code>. À la sortie du <code>with</code>, le flux est fermé : <code>stage_load</code> contient le paquet.`,
+ why:`<code>COPY</code> est la commande d’insertion en masse de PostgreSQL : la commande est analysée une seule fois, puis les lignes arrivent à la chaîne, sans SQL autour. Beaucoup plus rapide que 5 000 <code>INSERT</code>. Mais elle ne sait qu’ajouter : pas de gestion des doublons, d’où la table temporaire sans règles.`,
+ code:`with cur.copy(copy_stmt) as copy:          # "COPY stage_load (...) FROM STDIN"
+    for record in rows:                    # chaque film du paquet
+        copy.write_row(tuple(record[col] for col in columns))
+# sortie du with : fin du flux, le COPY est terminé`,
+ ex:()=>`${pre(`COPY stage_load ("id", "title", "vote_average") FROM STDIN`)}
+ <div style="margin-top:8px">${tbl(['partie de la commande','contient','remplie quand'],[['("id", "title", "vote_average")','des <b>noms</b> de colonnes','ligne 62 (étape 8), avant la boucle'],['FROM STDIN','les <b>données</b>','lignes 77-78, par write_row, un film à la fois']])}</div>
+ <p class="exl" style="margin-top:10px">Ce que write_row envoie, dans l’ordre de columns</p>${pre(`write_row((27205,  "Inception",       8.4))
+write_row((155,    "The Dark Knight", 8.5))
+write_row((157336, "Interstellar",    8.4))`)}
+ <div style="margin-top:10px">${tbl(['id','title','vote_average'],[['27205','Inception','8.4'],['155','The Dark Knight','8.5'],['157336','Interstellar','8.4']],'stage_load après le COPY',['new','new','new'])}</div>`,
+ more:`<p><b>Pourquoi l’ordre compte</b> : PostgreSQL range les valeurs <b>par position</b>. La 1re dans <code>id</code>, la 2e dans <code>title</code>, la 3e dans <code>vote_average</code>, comme annoncé dans la parenthèse. Comme <code>copy_stmt</code> et <code>write_row</code> utilisent la même liste <code>columns</code>, tout tombe dans la bonne case.</p>
+ ${tbl(['','INSERT','COPY'],[['envoi','une requête complète par ligne','une commande, puis un flux de lignes'],['analyse SQL','à chaque ligne','une seule fois'],['vitesse','lent en masse','très rapide'],['doublons (ON CONFLICT)','oui','non']])}
+ <p>Le <code>with</code> garantit que le flux est fermé, sinon PostgreSQL attendrait d’autres lignes.</p>`,
+ v:[]},
+/* 13 */ {ph:'pg',t:'INSERT … ON CONFLICT : la vraie insertion',l:'ligne 79',
+ d:`Une seule requête prend <b>toutes les lignes de <code>stage_load</code></b> et les fait passer dans <code>pipeline.movies</code>. Pour chaque ligne, PostgreSQL cherche son <code>id</code> <b>dans la vraie table</b> : absent, il l’ajoute ; présent, il le met à jour.`,
+ why:`C’est ce qui rend le chargement <b>relançable</b> : 1er ou 10e lancement, toujours 25 389 films, jamais 50 778. Le lien avec l’étape précédente, c’est uniquement la table <code>stage_load</code> : <code>COPY</code> y a écrit et s’est terminé, <code>merge_stmt</code> la lit comme une table normale.`,
+ code:`cur.execute(merge_stmt)
+processed += len(rows)`,
+ ex:()=>`<div class="duo">${tbl(['id','title','vote_average'],[['27205','Inception','8.3']],'pipeline.movies avant')}${tbl(['id','title','vote_average'],[['27205','Inception','8.4 <span class="tag upd">mis à jour</span>'],['155','The Dark Knight','8.5 <span class="tag new">ajouté</span>'],['157336','Interstellar','8.4 <span class="tag new">ajouté</span>']],'pipeline.movies après',['upd','new','new'])}</div>
+ <pre class="code" style="margin-top:8px">${hl(`ligne de stage_load   →  id déjà dans pipeline.movies ?
+27205  Inception      →  oui → DO UPDATE SET ... (8.3 devient 8.4)
+155    Dark Knight    →  non → ajout
+157336 Interstellar   →  non → ajout`)}</pre>`,
+ more:`<ul class="pts"><li><b>La vérification se fait au moment d’écrire, ligne par ligne</b>, contre la clé primaire de <code>pipeline.movies</code>. Elle est rapide : une <code>PRIMARY KEY</code> crée automatiquement un index.</li><li><b>Les autres règles</b> (<code>NOT NULL</code>, <code>REFERENCES</code>, <code>CHECK</code>) sont vérifiées au même moment. Mais elles n’ont pas de « plan B » : une ligne refusée provoque une erreur, toute la table est annulée (rollback) et le script s’arrête.</li><li><b>Cas limite</b> : si le même film était deux fois dans le même paquet, PostgreSQL ne saurait pas quelle version garder et s’arrêterait. Ça n’arrive pas : la transformation a déjà dédoublonné.</li><li><code>processed</code> ajoute la taille du paquet au compteur.</li></ul>`,
+ v:[]},
+/* 14 */ {ph:'ctrl',t:'Fin de fichier : afficher la progression',l:'ligne 81',
+ d:`Après tous les paquets d’un fichier, on affiche une ligne. On recommence ensuite avec le fichier suivant (étape 9).`,
+ why:`Un script qui travaille sans rien afficher ressemble à un script bloqué : c’est le même piège que pendant l’ingestion.`,
+ code:`print(f"  {table_name}: {file_path.name} terminé", flush=True)`,
+ ex:()=>pre(`  movies: part-0000.parquet terminé
+  movies: part-0001.parquet terminé
+  ...`),
+ more:`<p><code>flush=True</code> force l’affichage immédiat, sans attendre que Python accumule du texte.</p>`,
+ v:[]},
+/* 15 */ {ph:'ctrl',t:'Contrôle : compter ce qui est en base',l:'lignes 84-86',
+ d:`Une fois tous les fichiers chargés, on demande à PostgreSQL combien de lignes contient vraiment la table, et on l’affiche à côté du nombre de lignes traitées.`,
+ why:`C’est la preuve que tout est passé, et que la relance ne crée pas de doublons. Salma a lancé le script deux fois : toujours 25 389 en base.`,
+ code:`cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(destination))
+total_in_db = cur.fetchone()[0]            # (25389,) → 25389
+print(f"{table_name} : {processed} lignes traitées ; {total_in_db} lignes en base", flush=True)`,
+ ex:()=>tbl(['cas','processed','total_in_db','ce que ça veut dire'],[['1er lancement','25 389','25 389','tout est passé'],['2e lancement','25 389','<b>25 389</b>','25 389 mises à jour, pas de doublon'],['problème','25 389','25 300','il manque des lignes : chercher pourquoi']]),
+ more:`<p><code>fetchone()</code> lit une seule ligne de réponse, ici un tuple d’un élément <code>(25389,)</code> ; <code>[0]</code> prend cet élément. Même principe que <code>row[0]</code> à l’étape 4.</p>`,
+ v:['total_in_db']},
+/* 16 */ {ph:'ctrl',t:'Retour dans main() : commit, puis table suivante',l:'ligne 87 + main',
+ d:`<code>load_table</code> renvoie le compteur. On sort du <code>with psycopg.connect(...)</code> de <code>main</code> : <b>commit</b>, tout devient définitif, et <code>stage_load</code> disparaît. Puis on passe à la table suivante, avec une nouvelle connexion.`,
+ why:`Une transaction par table : si <code>credits</code> plante, <code>genres</code>, <code>movies</code>, <code>people</code> et <code>movie_genres</code> restent chargées et validées. On corrige, on relance, et l’upsert évite les doublons.`,
+ code:`    return processed                 # fin de load_table
+# dans main(), à la sortie du with : commit + fermeture
+# puis : for name in TABLES → table suivante`,
+ ex:()=>pre(`genres : 19 lignes traitées ; 19 lignes en base
+movies : 25389 lignes traitées ; 25389 lignes en base
+people : 674561 lignes traitées ; 674561 lignes en base
+movie_genres : 60263 lignes traitées ; 60263 lignes en base
+credits : 1914840 lignes traitées ; 1914840 lignes en base
+Chargement des cinq tables terminé.`),
+ more:`<p>Total : <b>2 675 072 lignes</b>, exactement les nombres des Parquet d’Aida.</p>`,
+ v:[]}
+];
+
+/* ---------- Variables (mémoire de Python) ---------- */
+const VARS=[
+ ['password','main',1,'texte Python','"••••••"  (jamais écrit dans un fichier)'],
+ ['paths','prep',2,'liste Python','[".../part-0000.parquet", ...]  38 fichiers'],
+ ['destination','prep',3,'morceau SQL','"pipeline"."movies"'],
+ ['columns','prep',4,'liste Python','["id", "title", "vote_average"]'],
+ ['column_names','prep',5,'morceau SQL','"id", "title", "vote_average"'],
+ ['pk_cols','prep',6,'liste Python','["id"]'],
+ ['conflict_columns','prep',6,'morceau SQL','"id"'],
+ ['other_cols','prep',6,'liste Python','["title", "vote_average"]'],
+ ['on_conflict','prep',7,'morceau SQL','DO UPDATE SET "title" = EXCLUDED."title",\n              "vote_average" = EXCLUDED."vote_average"'],
+ ['copy_stmt','prep',8,'commande SQL (pas lancée)','COPY stage_load ("id", "title", "vote_average")\nFROM STDIN'],
+ ['merge_stmt','prep',8,'commande SQL (pas lancée)','INSERT INTO "pipeline"."movies" (...)\nSELECT ... FROM stage_load WHERE true\nON CONFLICT ("id") DO UPDATE SET ...'],
+ ['processed','data',9,'nombre','0 → 5 000 → 10 000 → ... → 25 389'],
+ ['rows','data',10,'données (liste de dictionnaires)','[{"id": 27205, "title": "Inception",\n  "vote_average": 8.4}, ...]  5 000 par paquet'],
+ ['total_in_db','ctrl',15,'nombre','25389']
+];
+const VLINE={password:'l. 93',paths:'l. 18',destination:'l. 22',columns:'l. 39',column_names:'l. 43',pk_cols:'l. 44',conflict_columns:'l. 46',other_cols:'l. 47',on_conflict:'l. 53-55',copy_stmt:'l. 62',merge_stmt:'l. 58',processed:'l. 64, 80',rows:'l. 74',total_in_db:'l. 85'};
+
+/* ---------- Plan (lignage) ---------- */
+const N={
+ schema:{x:70,y:80,ph:'avant',t:'schema.sql',s:'tables vides',step:0,d:'crée le schéma pipeline et les 5 tables vides, à la main avant le script'},
+ catalogue:{x:210,y:80,ph:'prep',t:'catalogue',s:'pg_attribute…',step:4,d:'les tables internes de PostgreSQL, qui décrivent les tables créées par schema.sql'},
+ columns:{x:350,y:80,ph:'prep',t:'columns',s:'liste de noms',step:4,d:'les noms des colonnes, dans l’ordre'},
+ column_names:{x:350,y:190,ph:'prep',t:'column_names',s:'"id", "title", …',step:5,d:'les mêmes noms, au format SQL'},
+ pk_cols:{x:640,y:80,ph:'prep',t:'pk_cols',s:'écrit dans le code',step:6,d:'la clé primaire de la table, lue dans un dictionnaire écrit à la main (même clé que schema.sql)'},
+ conflict_columns:{x:640,y:190,ph:'prep',t:'conflict_columns',s:'"id"',step:6,d:'la clé, au format SQL, pour ON CONFLICT (...)'},
+ other_cols:{x:500,y:190,ph:'prep',t:'other_cols',s:'le reste',step:6,d:'les colonnes à mettre à jour en cas de doublon'},
+ on_conflict:{x:500,y:300,ph:'prep',t:'on_conflict',s:'DO UPDATE / NOTHING',step:7,d:'quoi faire en cas de doublon'},
+ copy_stmt:{x:350,y:300,ph:'prep',t:'copy_stmt',s:'texte COPY',step:8,d:'le texte de la commande COPY, pas encore lancée'},
+ merge_stmt:{x:640,y:300,ph:'prep',t:'merge_stmt',s:'texte INSERT',step:8,d:'le texte de la commande INSERT … ON CONFLICT, pas encore lancée'},
+ parquet:{x:70,y:440,ph:'data',t:'Parquet',s:'part-NNNN',step:9,d:'les fichiers d’Aida, lus par Python seulement'},
+ rows:{x:210,y:440,ph:'data',t:'rows',s:'5 000 dicts',step:10,d:'un paquet de 5 000 lignes, dans la mémoire de Python'},
+ copy_exec:{x:350,y:440,ph:'pg',t:'COPY',s:'write_row → STDIN',step:12,d:'la commande COPY lancée : Python envoie chaque ligne'},
+ stage:{x:495,y:440,ph:'pg',t:'stage_load',s:'temporaire',step:3,d:'la table de transit, sans règles, vidée à chaque paquet'},
+ insert_exec:{x:640,y:440,ph:'pg',t:'INSERT',s:'ON CONFLICT',step:13,d:'la commande INSERT … ON CONFLICT lancée : ajout ou mise à jour'},
+ movies:{x:790,y:440,ph:'pg',t:'pipeline.movies',s:'vraie table',step:13,d:'la vraie table, avec ses règles'},
+ count:{x:930,y:440,ph:'ctrl',t:'COUNT(*)',s:'contrôle',step:15,d:'le nombre de lignes réellement en base'}
+};
+const E=[
+ ['schema','catalogue'],['catalogue','columns'],['columns','column_names'],['columns','other_cols'],
+ ['pk_cols','conflict_columns'],['pk_cols','other_cols'],['other_cols','on_conflict'],
+ ['column_names','copy_stmt'],['column_names','merge_stmt'],['conflict_columns','merge_stmt'],['on_conflict','merge_stmt'],
+ ['copy_stmt','copy_exec','dash','le texte'],['merge_stmt','insert_exec','dash','le texte'],['columns','rows','dash','quelles colonnes lire'],
+ ['parquet','rows'],['rows','copy_exec'],['copy_exec','stage'],['stage','insert_exec'],['insert_exec','movies'],['movies','count']
+];
+const up=id=>E.filter(e=>e[1]===id).map(e=>e[0]);
+const down=id=>E.filter(e=>e[0]===id).map(e=>e[1]);
+function walk(id,f){const seen=new Set(),q=[id];while(q.length)for(const n of f(q.shift()))if(!seen.has(n)){seen.add(n);q.push(n)}return seen}
+
+function buildMap(){let h='';
+ h+=`<rect class="lane" x="6" y="8" width="988" height="355" rx="14"/><text class="lanet" x="22" y="34">1 · PRÉPARER</text><text class="lanes" x="122" y="34">du texte SQL, aucune donnée ne bouge · lignes 16-62</text>`;
+ h+=`<rect class="lane" x="6" y="378" width="988" height="174" rx="14"/><text class="lanet" x="22" y="538">2 · EXÉCUTER</text><text class="lanes" x="122" y="538">les données circulent, pour chaque paquet de 5 000 lignes · lignes 64-86</text>`;
+ E.forEach(([a,b,k,lab],i)=>{const p=N[a],q=N[b];let d;
+  const y0=q.y>p.y?p.y+52:p.y;                       /* vers le bas : partir sous l'étiquette */
+  if(p.y===q.y){d=`M${p.x} ${p.y}L${q.x} ${q.y}`}
+  else if(p.x===q.x){d=`M${p.x} ${y0}L${q.x} ${q.y-15}`}
+  else{const my=(y0+q.y)/2;d=`M${p.x} ${y0}C${p.x} ${my} ${q.x} ${my} ${q.x} ${q.y-15}`}
+  if(a==='columns'&&b==='rows')d=`M${p.x} ${y0}C280 200 230 330 ${q.x} ${q.y-15}`;
+  h+=`<path class="ed${k==='dash'?' dash':''}" data-e="${i}" style="${cv(k==='dash'?'ctrl':N[b].ph)}" d="${d}"/>`;
+  if(lab){const lx=a==='columns'?250:p.x+8,ly=a==='columns'?272:418;h+=`<text class="edl" x="${lx}" y="${ly}"${a==='columns'?' text-anchor="end"':''}>${lab}</text>`}});
+ for(const id in N){const s=N[id];
+  h+=`<g class="st" data-id="${id}" tabindex="0" role="button" aria-label="${esc(s.t)}" style="${cv(s.ph)}"><circle class="hit" cx="${s.x}" cy="${s.y+10}" r="34"/><circle class="dot" cx="${s.x}" cy="${s.y}" r="11"/><text class="lab" x="${s.x}" y="${s.y+30}">${esc(s.t)}</text><text class="sub" x="${s.x}" y="${s.y+45}">${esc(s.s)}</text></g>`}
+ $('#map').innerHTML=h}
+const nm=id=>`<code>${esc(N[id].t)}</code>`;
+function trace(id){const m=$('#map'),ro=$('#readout');m.querySelectorAll('.lit').forEach(e=>e.classList.remove('lit'));
+ if(!id){m.classList.remove('focus');ro.textContent='Survole une station pour voir d’où elle vient et ce qu’elle alimente. Clique pour ouvrir l’étape.';return}
+ const u=walk(id,up),d=walk(id,down),all=new Set([...u,...d,id]);m.classList.add('focus');
+ m.querySelectorAll('.st').forEach(g=>{if(all.has(g.dataset.id))g.classList.add('lit')});
+ E.forEach(([a,b],i)=>{if((u.has(a)&&(u.has(b)||b===id))||(d.has(b)&&(d.has(a)||a===id)))m.querySelector(`[data-e="${i}"]`).classList.add('lit')});
+ ro.innerHTML=`<b>${esc(N[id].t)}</b> : ${esc(N[id].d)}. `+(u.size?'Vient de '+[...u].map(nm).join(', ')+'. ':'C’est un point de départ. ')+(d.size?'Alimente '+[...d].map(nm).join(', ')+'.':'')}
+function bindMap(){const m=$('#map');
+ m.addEventListener('mouseover',e=>{const g=e.target.closest('.st');if(g)trace(g.dataset.id)});
+ m.addEventListener('focusin',e=>{const g=e.target.closest('.st');if(g)trace(g.dataset.id)});
+ m.addEventListener('mouseleave',()=>trace(null));
+ m.addEventListener('click',e=>{const g=e.target.closest('.st');if(g)openStep(N[g.dataset.id].step)});
+ m.addEventListener('keydown',e=>{const g=e.target.closest('.st');if(g&&(e.key==='Enter'||e.key===' ')){e.preventDefault();openStep(N[g.dataset.id].step)}})}
+
+/* ---------- Rendu des étapes ---------- */
+function buildSteps(){let h='',cur='';
+ STEPS.forEach((s,i)=>{
+  if(s.ph!==cur){cur=s.ph;h+=`<div class="phase" style="${cv(s.ph)}"><i></i>${PH[s.ph].name}</div>`}
+  h+=`<article class="step" id="step${i}" data-n="${i}" style="${cv(s.ph)}">
+   <div class="sh3"><h3>${s.t}</h3><span class="lines">${s.l}</span></div>
+   <p class="d">${s.d}</p>
+   <div class="ex"><p class="exl">Exemple</p>${s.ex()}</div>
+   <details><summary>Le code (${s.l})</summary><div class="in">${pre(s.code)}</div></details>
+   <details><summary>Pour aller plus loin</summary><div class="in">${s.more}</div></details>
+   <button class="more" data-step="${i}">Fiche complète →</button>
+  </article>`});
+ $('#steps').innerHTML=h}
+
+function buildVars(){
+ const kinds=[['all','Toutes','main'],['prep','Préparer (texte)','prep'],['data','Données','data'],['ctrl','Contrôle','ctrl']];
+ $('#filters').innerHTML=kinds.map(([k,l,ph],i)=>`<button data-k="${k}" aria-pressed="${i===0}" style="${cv(ph)}">${l}</button>`).join('');
+ const draw=k=>{$('#vars').innerHTML=VARS.filter(v=>k==='all'||v[1]===k).map(([n,ph,st,kind,val])=>`<button class="var" data-step="${st}" style="${cv(ph)}"><span class="vh"><b>${n}</b><small>${VLINE[n]} · étape ${st}</small></span><span class="kind">${kind}</span><pre>${esc(val)}</pre></button>`).join('')};
+ draw('all');
+ $('#filters').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;$('#filters').querySelectorAll('button').forEach(x=>x.setAttribute('aria-pressed',String(x===b)));draw(b.dataset.k)})}
+
+/* ---------- Simulation ---------- */
+const R=[['27205','Inception','8.4'],['155','The Dark Knight','8.5'],['157336','Interstellar','8.4']];
+const PYROWS=`[{"id": 27205, "title": "Inception",
+  "vote_average": 8.4},
+ {"id": 155, "title": "The Dark Knight",
+  "vote_average": 8.5},
+ {"id": 157336, "title": "Interstellar",
+  "vote_average": 8.4}]`;
+const COLS=['id','title','note'];
+const EMPTY=t=>`<p class="empty">${t}</p>`;
+const SIM=[
+ {t:'Départ',l:'—',sql:'# 2e lancement du script, table movies',py:null,st:null,mv:[[['27205','Inception','8.3']],['']],act:[],arr:[],
+  note:'La vraie table contient déjà Inception, avec une note de 8.3 (chargée au 1er lancement). <code>stage_load</code> vient d’être créée, vide. Rien n’est encore lu.'},
+ {t:'Lire',l:'72-74',sql:'for record_batch in parquet.iter_batches(batch_size=5000, columns=columns):\n    rows = record_batch.to_pylist()',py:PYROWS,st:null,mv:[[['27205','Inception','8.3']],['']],act:['p1'],arr:[],
+  note:'Python lit un paquet dans le Parquet. Les 3 films sont dans la <b>mémoire de Python</b>. PostgreSQL ne les a pas encore vus, et ne lit jamais le Parquet lui-même.'},
+ {t:'Vider',l:'75',sql:'TRUNCATE stage_load',py:PYROWS,st:null,mv:[[['27205','Inception','8.3']],['']],act:['p2'],arr:[],
+  note:'On vide la table temporaire. Elle l’était déjà au 1er paquet, mais au paquet suivant elle contiendrait encore l’ancien.'},
+ {t:'COPY',l:'76-78',sql:'COPY stage_load ("id", "title", "vote_average") FROM STDIN\n-- puis write_row × 3, par le STDIN',py:PYROWS,st:[R,['new','new','new']],mv:[[['27205','Inception','8.3']],['']],act:['p1','p2'],arr:['a1'],
+  note:'<code>copy_stmt</code> est lancée : Python envoie les 3 films un par un avec <code>write_row</code>. <code>stage_load</code> n’a aucune règle, elle accepte tout. À la sortie du <code>with</code>, le COPY est <b>terminé</b>. La vraie table n’a pas bougé.'},
+ {t:'INSERT',l:'79',sql:'INSERT INTO "pipeline"."movies" ("id", "title", "vote_average")\nSELECT "id", "title", "vote_average" FROM stage_load WHERE true\nON CONFLICT ("id") DO UPDATE SET "title" = EXCLUDED."title",\n                                 "vote_average" = EXCLUDED."vote_average"',py:PYROWS,st:[R,['','','']],
+  mv:[[['27205','Inception','8.4 <span class="tag upd">mis à jour</span>'],['155','The Dark Knight','8.5 <span class="tag new">ajouté</span>'],['157336','Interstellar','8.4 <span class="tag new">ajouté</span>']],['upd','new','new']],act:['p2','p3'],arr:['a2'],
+  note:'<code>merge_stmt</code> est lancée : elle <b>lit <code>stage_load</code></b> et, pour chaque ligne, cherche son <code>id</code> <b>dans <code>pipeline.movies</code></b>. 27205 existe : <code>DO UPDATE</code>, la note passe de 8.3 à 8.4 (<code>EXCLUDED</code> = la nouvelle ligne). 155 et 157336 n’existent pas : ajout. Toujours une seule Inception.'},
+ {t:'Suite',l:'80-86',sql:'processed += len(rows)          # +3\n# ... paquets et fichiers suivants (retour à « Lire ») ...\nSELECT COUNT(*) FROM "pipeline"."movies"',py:null,st:[R,['','','']],
+  mv:[[['27205','Inception','8.4'],['155','The Dark Knight','8.5'],['157336','Interstellar','8.4']],['','','']],act:['p3'],arr:[],
+  note:'Le compteur avance. Au paquet suivant, on recommence à « Lire ». À la fin, <code>COUNT(*)</code> compare : ici 3 lignes traitées, 3 lignes en base. En vrai : 25 389 et 25 389.'}
+];
+let si=0;
+function drawSim(){const s=SIM[si];
+ $('#dots').innerHTML=SIM.map((x,i)=>`<button data-i="${i}" ${i===si?'aria-current="step"':''}>${i}. ${x.t}</button>`).join('');
+ $('#simline').textContent=s.l;$('#simsql').innerHTML=hl(s.sql);$('#simnote').innerHTML=s.note;
+ $('#b1').innerHTML=s.py?`<pre class="pyrows">${esc(s.py)}</pre>`:EMPTY(si===0?'rien de lu':'paquet traité, on passe au suivant');
+ $('#b2').innerHTML=s.st?tbl(COLS,s.st[0],'',s.st[1]):EMPTY('vide');
+ $('#b3').innerHTML=tbl(COLS,s.mv[0],'',s.mv[1]);
+ ['p1','p2','p3'].forEach(p=>$('#'+p).classList.toggle('active',s.act.includes(p)));
+ ['a1','a2'].forEach(a=>$('#'+a).classList.toggle('on',s.arr.includes(a)));
+ $('#prev').disabled=si===0;$('#next').disabled=si===SIM.length-1}
+function bindSim(){$('#prev').onclick=()=>{si--;drawSim()};$('#next').onclick=()=>{si++;drawSim()};
+ $('#dots').addEventListener('click',e=>{const b=e.target.closest('button');if(b){si=+b.dataset.i;drawSim()}})}
+
+/* ---------- Questions ---------- */
+const FAQ=[
+ ['with, c’est un try / except ?',`Non. <code>try / except</code> <b>attrape</b> l’erreur : le script continue (comme pour un film en 404 pendant l’ingestion). <code>with</code> <b>nettoie</b> la ressource (fermer, valider ou annuler) mais laisse l’erreur remonter : le script s’arrête. C’est un <code>try / finally</code>.`,1],
+ ['{} ou %s ?',`<code>{}</code> + <code>.format(...)</code> reçoit un <b>nom</b> de table ou de colonne (avec <code>sql.Identifier</code>). <code>%s</code> + le 2e argument de <code>cur.execute(...)</code> reçoit une <b>valeur</b> (texte, nombre). Ils ne prennent pas les mêmes guillemets.`,3],
+ ['PostgreSQL lit-il les fichiers Parquet ?',`Jamais. C’est <b>Python</b> (pyarrow) qui les lit, puis envoie les lignes à PostgreSQL par <code>COPY … FROM STDIN</code>. PostgreSQL ne sait même pas d’où elles viennent.`,10],
+ ['Un conflit, c’est un doublon de quoi ?',`D’une <b>ligne</b>, pas d’une colonne : une ligne qu’on insère alors qu’une ligne avec la même clé (<code>id</code>) existe déjà dans la vraie table. Ça arrive surtout quand on relance le script.`,6],
+ ['C’est quoi EXCLUDED ?',`La <b>nouvelle</b> ligne, celle qui arrivait de <code>stage_load</code> et qui est entrée en conflit. Sans préfixe, <code>"title"</code> désigne l’ancienne ligne, déjà en base. Utilisable seulement dans <code>ON CONFLICT</code>.`,7],
+ ['Pourquoi une table temporaire ?',`<code>COPY</code> est la façon la plus rapide de faire entrer des lignes, mais il ne sait pas gérer les doublons. On verse donc vite dans <code>stage_load</code> (sans règles), puis une seule requête <code>INSERT … ON CONFLICT</code> range proprement dans la vraie table.`,3],
+ ['Les deux commandes se lancent en même temps ?',`Non, l’une après l’autre, à chaque paquet. <code>COPY</code> (lignes 76-78) écrit dans <code>stage_load</code> et se termine. Puis <code>INSERT</code> (ligne 79) lit <code>stage_load</code>. Elles ne se parlent pas : le seul lien, c’est la table.`,12],
+ ['Pourquoi merge_stmt est écrite avant copy_stmt ?',`Aucune raison technique : aux lignes 58-62, on ne fait que ranger deux textes dans deux variables. L’ordre d’<b>exécution</b> est dans la boucle : <code>copy_stmt</code> d’abord, <code>merge_stmt</code> ensuite. Ce serait plus lisible dans cet ordre.`,8],
+ ['PostgreSQL vérifie avant ou après l’insertion ?',`Au moment d’écrire, <b>ligne par ligne</b>, juste avant d’écrire chacune. Dans <code>stage_load</code> : aucune vérification. Dans <code>pipeline.movies</code> : clé primaire (avec <code>ON CONFLICT</code>), puis <code>NOT NULL</code>, <code>REFERENCES</code>, <code>CHECK</code>. Jamais de mauvaise ligne écrite puis corrigée.`,13],
+ ['Et si ça plante au milieu ?',`Le <code>with</code> de <code>main</code> fait un rollback : la table en cours est annulée entièrement, les tables précédentes restent validées. On corrige et on relance ; grâce à l’upsert, pas de doublons.`,16],
+ ['Où est lancé schema.sql ?',`Nulle part dans le dépôt : c’est une étape manuelle (pgAdmin ou <code>psql</code>), à faire avant le script, après avoir créé la base. C’est un point à documenter.`,0]
+];
+function buildFaq(){$('#faq').innerHTML=FAQ.map(([q,a,st])=>`<details><summary>${q}</summary><div class="in"><p>${a}</p><button class="more" data-step="${st}" style="${cv(STEPS[st].ph)}">Voir l’étape ${st} →</button></div></details>`).join('')}
+
+/* ---------- À signaler ---------- */
+const SIG=[
+ ['Documenter la mise en place','Créer la base et lancer schema.sql ne sont expliqués nulle part. Le README indique encore « À venir » pour l’étape ③.',0],
+ ['Réglages de connexion en dur','localhost, 5433 et postgres sont écrits dans le code, alors que .env.example prévoit DATABASE_URL. Un autre membre de l’équipe ne pourrait pas le lancer tel quel.',1],
+ ['Lancer schema.sql depuis le script ?','Possible avec conn.execute(...), à condition d’écrire CREATE TABLE IF NOT EXISTS pour pouvoir relancer. Supprimerait une étape manuelle.',0],
+ ['Ordre de copy_stmt et merge_stmt','Les écrire dans l’ordre d’exécution (copy_stmt d’abord) rendrait le script plus facile à lire. Aucun effet sur le fonctionnement.',8]
+];
+function buildSig(){$('#sig').innerHTML=SIG.map(([t,d,st])=>`<button class="card" data-step="${st}" style="${cv('ctrl')};--c:var(--l6)"><b>${t}</b><span>${d}</span><em>Étape ${st} →</em></button>`).join('')}
+
+/* ---------- Fenêtre ---------- */
+const dlg=$('#dlg'),body=$('#dlgbody');
+function openStep(i){const s=STEPS[i];
+ const vs=VARS.filter(v=>v[2]===i).map(v=>`<button class="chip" data-step="${i}" style="${cv(v[1])}">${v[0]}</button>`).join('');
+ const nodes=Object.keys(N).filter(k=>N[k].step===i).map(k=>`<code>${esc(N[k].t)}</code>`).join(', ');
+ body.innerHTML=`<div class="mh"><div class="ey">ÉTAPE ${i} · ${esc(PH[s.ph].name).toUpperCase()} · ${esc(s.l)}</div><h2 id="dlgt">${s.t}</h2><button class="close" aria-label="Fermer">×</button></div>
+ <div class="mb"><p>${s.d}</p>
+ <div class="blk why"><h3>Pourquoi</h3><p>${s.why}</p></div>
+ <div class="blk"><h3>Le code</h3>${pre(s.code)}</div>
+ <div class="blk"><h3>Exemple</h3>${s.ex()}</div>
+ <div class="blk"><h3>Pour aller plus loin</h3><div style="display:flex;flex-direction:column;gap:10px">${s.more}</div></div>
+ ${vs||nodes?`<div class="blk"><h3>Sur le plan</h3>${nodes?`<p>Stations : ${nodes}</p>`:''}${vs?`<div class="chips" style="margin-top:6px">Variables créées : ${vs}</div>`:''}</div>`:''}
+ <div class="mf"><button ${i>0?`data-step="${i-1}"`:'disabled'}>← Étape ${i-1>=0?i-1:''}</button><button data-go="${i}">Voir dans la page</button><button ${i<STEPS.length-1?`data-step="${i+1}"`:'disabled'}>Étape ${i<STEPS.length-1?i+1:''} →</button></div></div>`;
+ dlg.setAttribute('style',cv(s.ph));if(!dlg.open)dlg.showModal();dlg.scrollTop=0}
+dlg.addEventListener('click',e=>{if(e.target===dlg||e.target.closest('.close')){dlg.close();return}
+ const g=e.target.closest('[data-go]');if(g){dlg.close();$('#step'+g.dataset.go).scrollIntoView();return}
+ const o=e.target.closest('[data-step]');if(o)openStep(+o.dataset.step)});
+document.querySelector('main').addEventListener('click',e=>{const o=e.target.closest('[data-step]');if(o)openStep(+o.dataset.step)});
+
+/* ---------- Légende ---------- */
+$('#legend').innerHTML=Object.keys(PH).map(k=>`<span style="${cv(k)}"><i></i>${PH[k].name}</span>`).join('');
+
+buildMap();bindMap();buildVars();buildSteps();drawSim();bindSim();buildFaq();buildSig();
+</script>
+</body>
+</html>
