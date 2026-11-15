@@ -219,9 +219,11 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Données du pipeline : les JSON bruts de data/raw/ sont versionnés pour que l'équipe
-# les récupère avec git pull. Les fichiers d'essai et data/processed/ ne le sont pas.
-data/raw/essais/
+# Données du pipeline : jamais versionnées (règle de la fiche).
+# On garde seulement les .gitkeep (pour que les dossiers existent) et le README de data/raw/.
+data/raw/*
+!data/raw/.gitkeep
+!data/raw/README.md
 data/processed/*
 !data/processed/.gitkeep
 

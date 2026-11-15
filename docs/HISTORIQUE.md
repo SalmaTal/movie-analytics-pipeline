@@ -2,14 +2,14 @@
 
 ## Où on en est
 
-- **Étape en cours :** ① Récupérer (ingestion), phase d'exploration de l'API TMDB à la main avec Thunder Client.
-- **Prochaines actiosn :** 
-  -supprimer `diagnostic_reseau.py`, commiter et pousser (~600 Mo de données), puis les tests pytest de l'ingestion.
-- **Décisions prises :**  
-  - Aida,B  publie sur Hugging Face.
-- **Décisions en attente :**
-  - informer Aida et Salma de la note d'exploration (Yannis avance sans attendre leur validation) ;
-  - quelles questions d'analyse on garde.
+- **Étapes :** ① ingestion terminée (25 389 films, 2000-2026, poussée), 17 tests pytest ; ② transformation faite par Aida et reproduite par Yannis ; ③ base SQL faite par Salma ; ④ publication faite par Aida (Hub **public**, tag v1.0.0).
+- **En cours :** finitions pour coller à la fiche. Yannis les fait lui-même et prévient l'équipe ensuite.
+- **Prochaines actions, dans l'ordre :**
+  1. **mesurer** le nouveau `sql/benchmark.sql` là où la base existe (PostgreSQL ne tourne pas sur le poste de Yannis), puis reporter les temps dans `docs/note_cenception_sql.md` ;
+  2. commiter et pousser les changements du 2026-11-15, en **prévenant l'équipe avant** (voir le piège du `git pull` ci-dessous) ;
+- **À signaler à Salma :** la mise en place de la base n'est documentée nulle part (voir le 2026-11-13) ; le script de chargement écrit les réglages de connexion en dur au lieu de lire `DATABASE_URL`.
+- **Idée bonus (pas demandée par la fiche) :** orchestrer le pipeline avec Airflow sur le VPS de Yannis (voir le 2026-11-13).
+- **Décisions en attente (équipe) :** garder ou non tout le `crew`.
 
 ## Journal
 
@@ -238,8 +238,87 @@ Le plus récent en bas.
 - **Tests :** 8 tests pytest dans `tests/test_transform.py` (0 « inconnus », dates, textes vides, listes dépliées, personne avec deux postes, doublons sur le script complet).
 - **Contrat 2 :** `docs/note_transformation.md`, statut « proposition », à valider avec Salma.
  - **Publication sur le Hub :** `scripts/publish/publish.py` crée un dépôt de dataset **privé**, envoie les 153 fichiers Parquet (environ 81 Mo) et la Dataset Card (`scripts/publish/dataset_card.md`), puis pose un tag avec `--tag`. Tag `v1.0.0` posé. Le dataset a été relu depuis le Hub avec `load_dataset(..., revision="v1.0.0")` : les 5 tableaux ont les mêmes nombres de lignes qu'après la transformation.
-- **Reste à décider en équipe :** la licence TMDB et le passage en public (les conditions de l'API sont non commerciales, non transférables et non sous-licenciables, la redistribution publique est à clarifier). Le dépôt est sous le compte personnel d'Aida (`NdeyeAidaNdour/tmdb-movies-2000-2026`), donc visible d'elle seule tant qu'il est privé.
+- **Reste à décider en équipe :** la licence TMDB et le passage en public (les conditions de l'API sont non commerciales, non transférables et non sous-licenciables, la redistribution publique est à clarifier). Le dépôt est sous le compte personnel d'Aida (`NdeyeAidaNdour/tmdb-movies-2000-2026`), donc visible d'elle seule tant qu'il est privé. Il peut etre changé pour une organisation.
 
-### 2026-11-10 
+### 2026-11-10 (Aida)
 - **Décision d'équipe :** le dataset est publié en **public** pour un usage pédagogique non commercial, attribution TMDB dans la Dataset Card.
 - **Dépôt hub passé en public**.
+
+### 2026-11-11
+
+- **`git pull`** : récupération du travail d'Aida (transformation Parquet, tests, publication sur le Hub, `docs/note_transformation.md`).
+- **`docs/doc_yannis.html` créé** : le pense-bête de Yannis, au style « plan de métro ». Il contient :
+  - le lignage cliquable API → JSON Lines → Parquet → PostgreSQL → Hub (survol = d'où viennent les données et ce qu'elles alimentent) ;
+  - les chiffres clés et le graphique des films par année ;
+  - les 8 stations de l'ingestion, la transformation (normalisation, nettoyage, typage, outils, Parquet vs PostgreSQL), les pièges, le reste à faire et un lexique ;
+  - une fiche détaillée (modale) pour chaque élément, et une recherche.
+
+  Rendu vérifié dans Edge (headless). Non commité.
+
+### 2026-11-12
+
+- **Transformation relancée par Yannis sur son poste** (après `pip install -r requirements.txt`). Résultat identique à celui d'Aida : `movies` 25 389, `genres` 19, `movie_genres` 60 263, `people` 674 561, `credits` 1 914 840 lignes ; 38 fichiers par tableau, 80 Mo au total. 25 389 ids uniques. `budget` est vide pour 16 425 films (65 %), `runtime` pour 56.
+- **`git pull` du travail de Salma** (pull request #1 `feature/sql-publication`, fusionnée le 2026-11-11) :
+  - `sql/schema.sql` : schéma `pipeline`, 5 tables (`movies`, `genres`, `movie_genres`, `people`, `credits`), clés primaires et étrangères, `CHECK` sur `credits.type` ;
+  - `scripts/load/load_all_parquet.py` : chargement par lots avec pyarrow + psycopg, `COPY` dans une table temporaire puis `INSERT … ON CONFLICT` (idempotent, vérifié sur deux exécutions). 2 675 072 lignes chargées ;
+  - `sql/analyses.sql` : 5 requêtes (top recettes, note par genre, top 5 par année avec `ROW_NUMBER`, réalisateurs, recettes annuelles avec `LAG`) ;
+  - `sql/benchmark.sql` : `EXPLAIN ANALYZE` avant/après un index sur `credits(job)`, **plus lent avec l'index** (315 ms contre 917 ms) ;
+  - `docs/note_cenception_sql.md` : le rapport.
+
+  **Point à signaler à Salma :** la fiche demande un index *justifié* par `EXPLAIN ANALYZE`. Celui-ci ralentit la requête (28 103 lignes renvoyées, trop pour qu'un index aide). Un index plus sélectif serait à tester, par exemple `credits(person_id)` pour « les films d'un acteur ». `docs/doc_yannis.html` décrit encore la partie SQL comme « à venir ».
+
+### 2026-11-13
+
+- **Relecture de `sql/schema.sql` et de `scripts/load/load_all_parquet.py`** avec Yannis (schéma PostgreSQL, `search_path`, `with`, table temporaire `stage_load`, lecture des colonnes dans le catalogue `pg_attribute`).
+- **Trou dans la doc repéré :** rien dans le dépôt n'explique comment préparer la base avant le chargement. Le script suppose que deux étapes manuelles ont déjà été faites :
+  1. créer la base `movie_analytics` (PostgreSQL local, port 5433, utilisateur `postgres`) ;
+  2. exécuter `sql/schema.sql`, avec pgAdmin ou avec `psql -h localhost -p 5433 -U postgres -d movie_analytics -f sql/schema.sql`.
+
+  Sans elles, le script s'arrête sur « Table cible introuvable ». Le README indique encore « À venir » pour l'étape ③. **À demander à Salma :** ajouter une section « ③ Base SQL » au README avec les commandes qu'elle a réellement utilisées. Les réglages de connexion sont aussi écrits en dur dans le script (`localhost`, `5433`, `postgres`), alors que `.env.example` prévoit `DATABASE_URL`.
+- **Idée bonus notée : orchestration avec Airflow sur le VPS privé de Yannis.** Pas demandée par la fiche, à faire une fois l'essentiel fini.
+  - Airflow est gratuit (open source, Apache 2.0). Déploiement avec le `docker-compose.yaml` officiel, sur Docker Engine (Linux, gratuit). Un DAG enchaîne les 4 commandes : ingestion, transformation, chargement, publication.
+  - Pourquoi le VPS plutôt que le PC Thales : Docker Desktop est payant dans les entreprises de plus de 250 salariés, le proxy du travail bloque TMDB, et le VPS est toujours allumé.
+  - À prévoir : au moins 4 Go de RAM libres ; ne pas exposer le port 8080 sur Internet (reverse proxy avec HTTPS, ou tunnel SSH) ; changer le compte par défaut `airflow` / `airflow` ; les secrets dans un `.env` sur le VPS.
+  - Interface : celle d'Airflow est peu personnalisable (réglages, plugins). Idée : une page à soi qui appelle l'API REST d'Airflow (lancer le pipeline, état de chaque étape, logs), par exemple le lignage de `doc_yannis.html` coloré selon l'état réel des étapes.
+- **`docs/doc_yannis.html` mis à jour** (toujours non commité) :
+  - « Ma partie » remplacé par le nom de la partie (« Ingestion ») dans la navbar et les titres ;
+  - nouvelle section « La base SQL » (navbar comprise), avec 8 fiches dans l'ordre d'exécution : préparer la base (étape manuelle non documentée), `schema.sql` (schéma, `search_path`), les règles, le chargement, la lecture des colonnes dans le catalogue, la table de transit + `COPY` + upsert, les analyses, l'index ;
+  - stations PostgreSQL du plan : plus « à venir », vrais noms de tables et nombres de lignes, résultats des 5 analyses et mesure de l'index ;
+  - chiffre ajouté (2,7 M lignes chargées), « Reste à faire » au 13 novembre (base SQL faite ; index et mise en place à signaler à Salma ; idée bonus Airflow) ;
+  - lexique : schéma, `search_path`, catalogue, table de transit, `COPY`, transaction, `with`, ETL/ELT, orchestrateur.
+
+  Rendu vérifié dans Edge (headless) : toutes les sections se remplissent, pas d'erreur JavaScript.
+- **Relecture complète de `scripts/load/load_all_parquet.py`** avec Yannis, ligne par ligne : tri des colonnes (clé / reste), `ON CONFLICT … DO UPDATE SET … = EXCLUDED…` ou `DO NOTHING`, assemblage de `copy_stmt` et `merge_stmt`, boucle (`iter_batches` → `TRUNCATE` → `COPY` par `write_row` → `INSERT … ON CONFLICT`), contrôle `COUNT(*)`. Remarque de lisibilité pour Salma : `merge_stmt` est écrite avant `copy_stmt` alors qu'elle s'exécute après.
+- **`docs/doc_chargement.html` créé** (non commité) : la doc visuelle du script de chargement, pour Yannis. Elle contient :
+  - un lignage cliquable en deux zones, « Préparer » (le texte SQL) et « Exécuter » (les données) ;
+  - les 14 variables du script avec leur contenu d'exemple ;
+  - une simulation pas à pas d'un paquet de 3 films au 2e lancement (mémoire Python → `stage_load` → `pipeline.movies`) ;
+  - les 17 étapes, chacune avec un exemple de données, le code et des détails dans des menus déroulants, et une fiche complète au clic ;
+  - les questions posées pendant la relecture et les points à signaler à Salma.
+
+  Rendu vérifié dans Edge (headless) : sections remplies, fiche qui s'ouvre au clic.
+
+### 2026-11-15
+
+- **Comparaison du dépôt avec la fiche :** il manquait les tests de l'ingestion, l'index ne se justifie pas (il ralentit la requête), et `data/raw/` est versionné alors que la fiche l'interdit (« `data/` et les secrets ne sont jamais versionnés »). Le README marque encore l'étape ③ « À venir ».
+- **`git pull` du commit d'Aida `c888873`** : le dataset est passé en **public** sur le Hub (décision d'équipe : usage pédagogique non commercial, attribution TMDB). Conflit sur `HISTORIQUE.md`, résolu en gardant les deux versions.
+- **`tests/test_ingest.py` écrit : 17 tests, sans appel à la vraie API.** Un faux TMDB (`FakeSession`) renvoie les réponses voulues, et `asyncio.sleep` est remplacé pour noter les attentes sans attendre. Les fichiers sont écrits dans un dossier temporaire, jamais dans `data/raw/`. Ce qui est vérifié :
+  - nommage déterministe (`year=AAAA.jsonl`), les 12 mois (années bissextiles), JSON Lines (une ligne par objet, accents gardés) ;
+  - `get_json` : 200 renvoie le JSON, 404 renvoie `None` sans réessayer, 401 s'arrête tout de suite, 429, timeout et coupure réseau sont réessayés, attente 1, 2, 4, 8 s puis abandon après 5 essais, `Retry-After` respecté ;
+  - le sémaphore : 30 requêtes avec 3 places, jamais plus de 3 en même temps ;
+  - discover : 500 pages au maximum, ids sans doublon entre les mois ;
+  - checkpoint : le `.part` est renommé en `.jsonl` à la fin, un `.part` laissé par une coupure est effacé et l'année refaite, une année déjà finie est sautée.
+
+  `python -m pytest` : **25 tests passent** (17 ingestion + 8 transformation), en 9 s. Non commité.
+- **Index remplacé dans `sql/benchmark.sql` : `credits(job)` → `credits(person_id)`.**
+  - **Pourquoi :** un index n'aide que si la requête cible peu de lignes. `job = 'Director'` renvoie 28 103 lignes (1,5 % de la table), éparpillées : l'index ralentissait (917 ms contre 315 ms). La filmographie de Christopher Nolan (`person_id = 525`) renvoie **57 lignes sur 1 914 840**, comptées dans les Parquet : c'est le cas où un index évite de lire toute la table. PostgreSQL n'indexe pas les clés étrangères tout seul.
+  - **Le script :** supprime les index de test (`DROP INDEX IF EXISTS`), lance `ANALYZE`, mesure sans index, crée `idx_credits_person_id`, mesure avec, puis mesure la même requête jointe à `movies`. Consigne ajoutée : lancer deux fois et garder la 2e mesure (cache froid à la 1re), ce qui explique peut-être en partie l'écart de la mesure de Salma.
+  - **Pas encore mesuré :** PostgreSQL ne tourne pas sur le poste de Yannis (port 5433 fermé). La note de Salma (`docs/note_cenception_sql.md`) décrit encore l'ancien index.
+- **`data/` retiré du suivi Git** (la fiche : « `data/` et les secrets ne sont jamais versionnés »). Annule la décision du 2026-11-03 / 11-09 de versionner `data/raw/`.
+  - `git rm -r --cached data/raw/movies data/raw/discover` : 54 fichiers retirés du suivi, **toujours présents sur le disque** (27 fichiers dans `data/raw/movies/`).
+  - `.gitignore` : tout `data/raw/` et `data/processed/` est ignoré, sauf les `.gitkeep` et `data/raw/README.md`.
+  - Docs alignées : `data/raw/README.md` (récupérer = relancer l'ingestion), `README.md` (arborescence, phrase sur `data/processed/`), `docs/index.html` (onglet organisation), `CLAUDE.md` (règle du dépôt).
+  - **Piège pour l'équipe :** au `git pull` de ce commit, Git **supprimera** `data/raw/movies/` et `data/raw/discover/` chez Aida et Salma, puisque les fichiers disparaissent du dépôt. Elles doivent les copier ailleurs avant de tirer, puis les remettre (ou relancer l'ingestion).
+  - **Pas fait :** les ~600 Mo restent dans l'**historique** Git (les anciens commits). Les effacer demanderait de réécrire l'historique et de forcer le push, ce qui casse les copies de l'équipe. Non fait, à décider en équipe.
+  - Non commité.
+- **Pas de soutenance** finalement (info de Yannis) : la présentation de 10 minutes prévue par la fiche n'est plus à préparer.

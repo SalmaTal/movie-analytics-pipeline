@@ -34,5 +34,5 @@ Quand une explication ou une décision a valeur de référence (rôles, étapes,
 ## Règles du dépôt
 
 - Ne jamais écrire de secret (clé TMDB, jeton HF, mot de passe) dans un fichier versionné : seulement dans `.env`, ignoré par Git.
-- `data/raw/` (les JSON bruts récupérés) est versionné : décision de Yannis, pour que l'équipe récupère les données avec `git pull`. `data/raw/essais/` et `data/processed/` ne le sont pas.
+- Rien de `data/` n'est versionné (règle de la fiche) : seuls les `.gitkeep` et `data/raw/README.md` le sont. Retiré du suivi le 2026-11-15 ; avant, `data/raw/` était versionné.
 - Ne pas commiter ni pousser sans demande explicite.

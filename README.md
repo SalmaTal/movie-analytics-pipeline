@@ -99,7 +99,7 @@ Lit `data/raw/movies/` par lots de 1 000 films, nettoie (0 « inconnus » devenu
 
 **Mesuré sur 25 389 films :** environ 33 s, environ 400 Mo de RAM au maximum, 589 Mo de JSON bruts pour 81 Mo de Parquet.
 
-`data/processed/` n'est pas versionné : après un `git pull`, il se régénère avec la commande ci-dessus.
+`data/` n'est pas versionné (règle de la fiche) : `data/raw/` se régénère avec l'ingestion, `data/processed/` avec la commande ci-dessus.
 
 ### ④ Publication
 
@@ -128,7 +128,7 @@ movie-analytics-pipeline/
 │   └── publish/             # publication sur Hugging Face
 ├── sql/                     # schéma, requêtes d'analyse, index
 ├── data/
-│   ├── raw/                 # réponses brutes de TMDB (versionnées)
+│   ├── raw/                 # réponses brutes de TMDB (non versionnées)
 │   └── processed/           # données nettoyées (non versionnées)
 ├── tests/                   # tests pytest
 └── docs/                    # documentation du projet

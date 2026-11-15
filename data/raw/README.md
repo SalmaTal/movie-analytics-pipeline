@@ -14,9 +14,13 @@ L'autre dossier, `discover/`, contient les pages de la liste des films : seuleme
 
 ## Le récupérer
 
+Les données ne sont **pas versionnées dans Git** (règle de la fiche : `data/` ne va jamais dans Git). Pour les avoir, on relance l'ingestion, avec une clé TMDB dans `.env` :
+
 ```bash
-git pull
+python -m scripts.ingest.fetch_async
 ```
+
+Compter quelques minutes, hors du réseau d'entreprise (le proxy bloque TMDB). Les données nettoyées, elles, sont publiées sur le Hub.
 
 ## Le lire en Python
 

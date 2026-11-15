@@ -1022,7 +1022,7 @@ films = load_dataset("notre-groupe/tmdb-cinema", "movies", revision="v1.0.0")</p
     <h2>Règles</h2>
     <div class="grid">
       <div class="box"><b class="t1">Secrets</b><span class="d">Clé TMDB, jeton Hugging Face, mot de passe de la base : dans le fichier <code>.env</code>, jamais dans Git.</span></div>
-      <div class="box"><b class="t1">Données</b><span class="d">Les JSON bruts de <code>data/raw/</code> sont commités, pour que toute l'équipe les récupère avec <code>git pull</code>. <code>data/raw/essais/</code> et <code>data/processed/</code> restent hors de Git.</span></div>
+      <div class="box"><b class="t1">Données</b><span class="d">Rien de <code>data/</code> n'est versionné (règle de la fiche) : <code>data/raw/</code> se régénère avec l'ingestion, <code>data/processed/</code> avec la transformation. Les données nettoyées sont publiées sur le Hub.</span></div>
       <div class="box"><b class="t1">Licence TMDB</b><span class="d">Usage non commercial, avec la mention « This product uses the TMDB API but is not endorsed or certified by TMDB ».</span></div>
     </div>
   </section>
